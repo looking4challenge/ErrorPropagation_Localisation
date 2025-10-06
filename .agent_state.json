@@ -1,21 +1,25 @@
 {
   "phase": "Phase 1",
-  "last_action": "draft_system_overview_created",
-  "next_action": "User review of system overview -> then parameter finalization & model.yml update",
+  "last_action": "stakeholder_report_created",
+  "next_action": "await stakeholder feedback on stakeholder_bericht_vorgehen_v1.md -> then proceed to parameter finalization",
+  "recent_deliverables": [
+    "report/stakeholder_bericht_vorgehen_v1.md - Comprehensive 5-page stakeholder report for methodology alignment",
+    "report/stakeholder_bericht_vorgehen_v1.pdf - CORRECTED PDF version (75.1 KB) - Unicode issues fixed, double numbering removed, landscape table marked",
+    "create_pdf_final.py - Robust PDF creation script with Unicode-to-ASCII conversion"
+  ],
   "open_questions": [
-    "Fehlende GNSS-Parameter (bias/noise open-urban-tunnel, outage rates)",
-    "Bestätigung Balise-Modell: Legacy (getrimmt) vs Schema 2.0 heavy-tail oder Hybrid?",
-    "IMU Basisparameter (bias accel/gyro, noise density) nicht in systemdescription vorhanden -> Auswahlvorschlag bestätigen",
-    "Korrelationsmatrix: Feinspezifikation zusätzlicher Kopplungen (Map↔Balise, Map↔GNSS) basierend auf map_error_analysis Korrelationsmatrix",
-    "Festlegung Balisen-Ausfallmodell: linear vs Markov für initiale Simulation",
-    "Ziel-Verfügbarkeitsannahme GNSS (open/urban/tunnel) für Ausfall-Simulation"
+    "Stakeholder feedback on completeness of error sources",
+    "Confirmation of error parameter ranges and models", 
+    "Acceptance of correlation assumptions",
+    "Approval of simulation parameters (N=10k, dt=0.1s, horizon=3600s)",
+    "Agreement on target metrics and evaluation criteria"
   ],
   "checklist": {
-  "Phase 0": "done",
-  "Phase 1": "in_progress",
-    "Phase 2": "pending",
+    "Phase 0": "done",
+    "Phase 1": "stakeholder_report_ready",
+    "Phase 2": "pending_stakeholder_feedback",
     "Phase 3": "pending",
-    "Phase 4": "pending",
+    "Phase 4": "pending", 
     "Phase 5": "pending",
     "Phase 6": "pending"
   }
