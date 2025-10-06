@@ -24,9 +24,11 @@
 
 ## Phase 4 - Simulation & Auswertung
 
-- [ ] Monte-Carlo Ausführung
-- [ ] Metriken berechnen & speichern
-- [ ] Plots generieren
+- [x] Monte-Carlo Ausführung (run_sim erweitert)
+- [x] Metriken berechnen & speichern (JSON + CSV)
+- [x] Plots generieren (PDF/CDF/QQ + Komponenten PDFs)
+- [ ] Zeitreihen / Modus-Vergleich (pending Erweiterung Zeitdynamik)
+- [ ] Lateral/2D Erweiterung (pending)
 
 ## Phase 5 - Sensitivität & Validierung
 
