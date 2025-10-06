@@ -1,0 +1,22 @@
+{
+  "phase": "Phase 1",
+  "last_action": "draft_system_overview_created",
+  "next_action": "User review of system overview -> then parameter finalization & model.yml update",
+  "open_questions": [
+    "Fehlende GNSS-Parameter (bias/noise open-urban-tunnel, outage rates)",
+    "Bestätigung Balise-Modell: Legacy (getrimmt) vs Schema 2.0 heavy-tail oder Hybrid?",
+    "IMU Basisparameter (bias accel/gyro, noise density) nicht in systemdescription vorhanden -> Auswahlvorschlag bestätigen",
+    "Korrelationsmatrix: Feinspezifikation zusätzlicher Kopplungen (Map↔Balise, Map↔GNSS) basierend auf map_error_analysis Korrelationsmatrix",
+    "Festlegung Balisen-Ausfallmodell: linear vs Markov für initiale Simulation",
+    "Ziel-Verfügbarkeitsannahme GNSS (open/urban/tunnel) für Ausfall-Simulation"
+  ],
+  "checklist": {
+  "Phase 0": "done",
+  "Phase 1": "in_progress",
+    "Phase 2": "pending",
+    "Phase 3": "pending",
+    "Phase 4": "pending",
+    "Phase 5": "pending",
+    "Phase 6": "pending"
+  }
+}
