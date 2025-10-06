@@ -5,7 +5,7 @@ from pathlib import Path
 import json
 import numpy as np
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, UTC
 
 from src.config import load_config, get_seed
 from src.sim_sensors import (
@@ -18,6 +18,7 @@ from src.sim_sensors import (
 from src.metrics import summarize, bootstrap_ci, rmse
 from src.fusion import fuse_pair
 from src.plots import plot_pdf, plot_cdf, plot_qq
+from src.time_sim import simulate_time_series
 
 
 def main():
@@ -27,14 +28,17 @@ def main():
     ap.add_argument("--figdir", default="figures", help="Directory for generated plots")
     ap.add_argument("--no-plots", action="store_true", help="Disable plot generation")
     ap.add_argument("--save-samples", action="store_true", help="Persist raw sample errors to CSV")
+    ap.add_argument("--time-series", action="store_true", help="Run time-series simulation (RMSE(t), P95(t), Var paths)")
+    ap.add_argument("--oos-threshold", type=float, default=0.2, help="Out-of-spec threshold for share_oos metric (m)")
+    ap.add_argument("--override-n", type=int, default=None, help="Override N_samples (dev/performance)")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
     rng = np.random.default_rng(get_seed(cfg))
-    n = int(cfg.sim["N_samples"])
+    n = int(cfg.sim["N_samples"]) if args.override_n is None else int(args.override_n)
 
     # Timestamp for provenance
-    ts = datetime.utcnow().isoformat() + "Z"
+    ts = datetime.now(UTC).isoformat()
 
     # Draw per-sensor longitudinal error approximations for a single representative epoch
     bal = simulate_balise_errors(cfg, n, rng)
@@ -118,7 +122,35 @@ def main():
         plot_pdf(secure, fig_dir / "secure_pdf.png", title="Secure Path PDF")
         plot_pdf(unsafe, fig_dir / "unsafe_pdf.png", title="Unsafe Path PDF")
 
-    print(f"Saved metrics (JSON + CSV) to {out_dir}. Plots={'on' if not args.no_plots else 'off'}. Raw samples={'saved' if args.save_samples else 'skipped'}.")
+    # Optional time-series run
+    if args.time_series:
+        ts_res = simulate_time_series(cfg, rng, threshold_oos=args.oos_threshold)
+        ts_df = pd.DataFrame({
+            "t_s": ts_res.times,
+            "rmse": ts_res.rmse,
+            "p95": ts_res.p95,
+            "var_secure": ts_res.var_secure,
+            "var_unsafe": ts_res.var_unsafe,
+            "share_out_of_spec": ts_res.share_oos,
+        })
+        ts_df.to_csv(out_dir / "time_series_metrics.csv", index=False)
+        if not args.no_plots:
+            # Simple time plots
+            import matplotlib.pyplot as plt
+            fig_dir = Path(args.figdir)
+            plt.figure(figsize=(6,3))
+            plt.plot(ts_res.times, ts_res.rmse, label="RMSE")
+            plt.plot(ts_res.times, ts_res.p95, label="P95")
+            plt.xlabel("t [s]"); plt.ylabel("Error [m]"); plt.title("Fused Error Time Metrics"); plt.legend(); plt.tight_layout(); plt.savefig(fig_dir/"fused_time_metrics.png", dpi=150); plt.close()
+            plt.figure(figsize=(6,3))
+            plt.plot(ts_res.times, ts_res.var_secure, label="Var secure")
+            plt.plot(ts_res.times, ts_res.var_unsafe, label="Var unsafe")
+            plt.xlabel("t [s]"); plt.ylabel("Var [m^2]"); plt.title("Component Variances"); plt.legend(); plt.tight_layout(); plt.savefig(fig_dir/"component_variances.png", dpi=150); plt.close()
+            plt.figure(figsize=(6,3))
+            plt.plot(ts_res.times, ts_res.share_oos, label="> threshold")
+            plt.xlabel("t [s]"); plt.ylabel("Share"); plt.title("Out-of-Spec Share"); plt.legend(); plt.tight_layout(); plt.savefig(fig_dir/"share_out_of_spec.png", dpi=150); plt.close()
+
+    print(f"Saved metrics (JSON + CSV) to {out_dir}. Plots={'on' if not args.no_plots else 'off'}. Raw samples={'saved' if args.save_samples else 'skipped'}. Time-series={'on' if args.time_series else 'off'}.")
 
 
 if __name__ == "__main__":

@@ -29,6 +29,9 @@
 - [x] Plots generieren (PDF/CDF/QQ + Komponenten PDFs)
 - [ ] Zeitreihen / Modus-Vergleich (pending Erweiterung Zeitdynamik)
 - [ ] Lateral/2D Erweiterung (pending)
+  - [x] Zeitreihen Grundgerüst (longitudinal, open mode)
+  - [ ] Modus-Vergleich (urban/tunnel)
+  - [ ] Lateral Fehlerpfad hinzufügen
 
 ## Phase 5 - Sensitivität & Validierung
 
