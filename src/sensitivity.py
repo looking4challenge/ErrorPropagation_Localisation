@@ -265,6 +265,185 @@ def exceedance_sensitivity(y: np.ndarray, X: Dict[str, np.ndarray], threshold: f
     return rows
 
 
+def expected_shortfall_conditioning(y: np.ndarray, X: Dict[str, np.ndarray], p: float = 95.0, low_q: float = 0.2, high_q: float = 0.8, min_tail: int = 15) -> List[Dict[str, Any]]:
+    """ES_p (Expected Shortfall) conditioning on X_i high vs low subsets.
+
+    ES_p defined here for absolute errors as mean(|y| | |y| > Q_p(|y|)). Baseline threshold is global.
+    For each parameter high/low subset reuse same threshold to ensure comparability.
+    Returns rows with delta_es = ES_high - ES_low.
+    """
+    abs_y = np.abs(y)
+    threshold = np.percentile(abs_y, p)
+    base_tail = abs_y[abs_y > threshold]
+    if base_tail.size == 0:
+        return []
+    es_base = float(base_tail.mean())
+    rows: List[Dict[str, Any]] = []
+    for name, vals in X.items():
+        q_low = np.quantile(vals, low_q)
+        q_high = np.quantile(vals, high_q)
+        low_mask = vals <= q_low
+        high_mask = vals >= q_high
+        if low_mask.sum() < 30 or high_mask.sum() < 30:  # need enough conditioning samples
+            continue
+        tail_low = np.abs(y[low_mask]) > threshold
+        tail_high = np.abs(y[high_mask]) > threshold
+        if tail_low.sum() < min_tail or tail_high.sum() < min_tail:
+            continue
+        es_low = float(np.abs(y[low_mask])[tail_low].mean())
+        es_high = float(np.abs(y[high_mask])[tail_high].mean())
+        rows.append({
+            "param": name,
+            f"threshold_q{int(p)}": float(threshold),
+            f"es_base_q{int(p)}": es_base,
+            f"es_low_q{int(p)}": es_low,
+            f"es_high_q{int(p)}": es_high,
+            f"delta_es_q{int(p)}": es_high - es_low,
+            "low_count": int(low_mask.sum()),
+            "high_count": int(high_mask.sum()),
+            "tail_low_count": int(tail_low.sum()),
+            "tail_high_count": int(tail_high.sum()),
+        })
+    rows.sort(key=lambda r: abs(r.get(f"delta_es_q{int(p)}", 0.0)), reverse=True)
+    return rows
+
+
+def _set_param(cfg: Config, path: str, value: float):
+    keys = path.split('.')
+    cur = cfg.raw
+    for k in keys[:-1]:
+        cur = cur[k]
+    cur[keys[-1]] = float(value)
+
+
+def _get_param(cfg: Config, path: str) -> float:
+    keys = path.split('.')
+    cur = cfg.raw
+    for k in keys[:-1]:
+        cur = cur[k]
+    v = cur[keys[-1]]
+    if not isinstance(v, (int, float)):
+        raise ValueError(f"Parameter {path} not numeric")
+    return float(v)
+
+
+def _sample_fused_errors(cfg: Config, n: int, rng: np.random.Generator) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Generate fused longitudinal, lateral and 2D errors (same logic as run_sim)."""
+    # Re-import locally to avoid circular deps if extended later
+    from .sim_sensors import (
+        simulate_balise_errors, simulate_balise_errors_2d, simulate_map_error_2d,
+        simulate_map_error, simulate_odometry_segment_error, simulate_imu_bias_position_error,
+        simulate_gnss_bias_noise_2d, combine_2d
+    )
+    from .fusion import fuse_pair
+    bal_long, bal_lat = simulate_balise_errors_2d(cfg, n, rng)
+    map_long, map_lat = simulate_map_error_2d(cfg, n, rng)
+    odo = simulate_odometry_segment_error(cfg, n, rng)
+    imu = simulate_imu_bias_position_error(cfg, n, rng)
+    gnss_long, gnss_lat = simulate_gnss_bias_noise_2d(cfg, n, rng, mode="open")
+    secure_long = simulate_balise_errors(cfg, n, rng) + simulate_odometry_segment_error(cfg, n, rng) + simulate_map_error(cfg, n, rng)
+    unsafe_long = gnss_long + imu
+    var_secure_long = np.var(secure_long, ddof=1)
+    var_unsafe_long = np.var(unsafe_long, ddof=1)
+    from .fusion import fuse_pair as fuse_pair_long
+    fused_long, _ = fuse_pair_long(secure_long, np.full(n, var_secure_long), unsafe_long, np.full(n, var_unsafe_long))
+    # Lateral fuse (secure: bal_lat + map_lat, unsafe: gnss_lat)
+    lat_secure = bal_lat + map_lat
+    lat_unsafe = gnss_lat
+    var_secure_lat = np.var(lat_secure, ddof=1)
+    var_unsafe_lat = np.var(lat_unsafe, ddof=1)
+    fused_lat, _ = fuse_pair(lat_secure, np.full(n, var_secure_lat), lat_unsafe, np.full(n, var_unsafe_lat))
+    fused_2d = combine_2d(fused_long, fused_lat)
+    return fused_long, fused_lat, fused_2d
+
+
+def sobol_sensitivity(cfg: Config, param_paths: Sequence[str], n_base: int, mc_n: int, rng: np.random.Generator, metrics: Sequence[str] | None = None, delta_pct: float = 10.0) -> Dict[str, Any]:
+    """Compute Sobol first-order & total indices for selected metrics.
+
+    Approach: Treat each parameter as Uniform[L, U] with L=val*(1-delta_pct/100), U=val*(1+delta_pct/100). If val==0 use ±delta_abs where
+    delta_abs = (delta_pct/100)*fallback_scale (fallback_scale = 1.0 or 1e-3 if small).
+    metrics: subset of {"rmse_long", "rmse_2d", "p95_long"}.
+    Returns dict mapping metric name -> DataFrame-like dict with columns: param, S1, S1_conf, ST, ST_conf.
+    """
+    try:
+        # Prefer new sobol sampler (deprecates saltelli in SALib >=1.5)
+        try:  # nested to allow fallback
+            from SALib.sample import sobol as _sobol_sampler_mod  # type: ignore
+            sample_fn = _sobol_sampler_mod.sample  # module has sample()
+        except Exception:
+            from SALib.sample import saltelli  # type: ignore
+            sample_fn = lambda problem, n_base, calc_second_order=False: saltelli.sample(problem, n_base, calc_second_order=calc_second_order)
+        from SALib.analyze import sobol  # analysis interface unchanged
+    except Exception as e:  # pragma: no cover - SALib import failure path
+        raise RuntimeError("SALib not available for Sobol analysis") from e
+    if metrics is None:
+        metrics = ["rmse_long", "rmse_2d", "p95_long"]
+    # Build problem definition
+    bounds = []
+    base_vals = []
+    for p in param_paths:
+        v = _get_param(cfg, p)
+        if v == 0.0:
+            scale = 1.0
+            lower = - (delta_pct/100.0) * scale
+            upper = + (delta_pct/100.0) * scale
+        else:
+            lower = v * (1 - delta_pct/100.0)
+            upper = v * (1 + delta_pct/100.0)
+        if lower == upper:
+            lower -= 1e-6
+            upper += 1e-6
+        bounds.append([lower, upper])
+        base_vals.append(v)
+    problem = {
+        'num_vars': len(param_paths),
+        'names': list(param_paths),
+        'bounds': bounds,
+    }
+    # Generate samples
+    sobol_samples = sample_fn(problem, n_base, calc_second_order=False)
+    k = problem['num_vars']
+    n_eval = sobol_samples.shape[0]
+    # Storage for metric values
+    metric_vals: Dict[str, List[float]] = {m: [] for m in metrics}
+    # Evaluate model per sample
+    for row in sobol_samples:
+        # set parameters
+        for j, p in enumerate(param_paths):
+            _set_param(cfg, p, row[j])
+        # generate MC sample for metrics
+        fused_long, fused_lat, fused_2d = _sample_fused_errors(cfg, mc_n, rng)
+        if 'rmse_long' in metric_vals:
+            metric_vals['rmse_long'].append(rmse(fused_long))
+        if 'rmse_2d' in metric_vals:
+            metric_vals['rmse_2d'].append(rmse(fused_2d))
+        if 'p95_long' in metric_vals:
+            metric_vals['p95_long'].append(float(np.percentile(np.abs(fused_long), 95)))
+    # Restore original parameters
+    for p, v in zip(param_paths, base_vals):
+        _set_param(cfg, p, v)
+    # Analyze
+    results: Dict[str, Any] = {}
+    for mname, vals in metric_vals.items():
+        Y = np.array(vals, dtype=float)
+        if Y.ndim != 1 or Y.size != n_eval:
+            raise RuntimeError(f"Unexpected shape for metric {mname} values")
+        S = sobol.analyze(problem, Y, calc_second_order=False, print_to_console=False)
+        rows = []
+        for p, s1, s1c, st, stc in zip(param_paths, S['S1'], S['S1_conf'], S['ST'], S['ST_conf']):
+            rows.append({
+                'param': p,
+                'S1': float(s1),
+                'S1_conf': float(s1c),
+                'ST': float(st),
+                'ST_conf': float(stc),
+            })
+        # Sort by total order
+        rows.sort(key=lambda r: (float('nan') if math.isnan(r['ST']) else -r['ST']))
+        results[mname] = rows
+    return results
+
+
 def lean_src_prcc_pipeline(component_samples: Dict[str, np.ndarray], fused_long: np.ndarray, fused_lat: np.ndarray | None = None, fused_2d: np.ndarray | None = None) -> Dict[str, List[Dict[str, Any]]]:
     """Compute SRC & PRCC for multiple derived targets.
 
@@ -303,5 +482,7 @@ __all__ = [
     "compute_prcc",
     "quantile_conditioning",
     "exceedance_sensitivity",
+    "expected_shortfall_conditioning",
+    "sobol_sensitivity",
     "lean_src_prcc_pipeline",
 ]

@@ -36,6 +36,8 @@ from src.sensitivity import (
     lean_src_prcc_pipeline,
     quantile_conditioning,
     exceedance_sensitivity,
+    expected_shortfall_conditioning,
+    sobol_sensitivity,
 )
 
 
@@ -58,6 +60,13 @@ def main():
     ap.add_argument("--quantile-conditioning", action="store_true", help="Enable quantile conditioning ΔQp sensitivity")
     ap.add_argument("--exceedance-threshold", type=float, default=None, help="Threshold T for exceedance ΔP(|e|>T) (default: use p95 of fused if not set)")
     ap.add_argument("--exceedance", action="store_true", help="Enable exceedance sensitivity ΔP(|e|>T)")
+    # Sobol & ES95 Erweiterung
+    ap.add_argument("--sobol", action="store_true", help="Run Sobol First/Total order indices (rmse_long, rmse_2d, p95_long)")
+    ap.add_argument("--sobol-base", type=int, default=750, help="Base sample size for Saltelli (total eval ~ (2k+2)*N)")
+    ap.add_argument("--sobol-params", nargs="*", default=None, help="Explicit parameter paths for Sobol (fallback: OAT default list)")
+    ap.add_argument("--sobol-delta-pct", type=float, default=10.0, help="Relative variation window ±pct for Sobol bounds")
+    ap.add_argument("--sobol-mc-n", type=int, default=800, help="Inner MC sample per Sobol evaluation (fused error resampling)")
+    ap.add_argument("--es95", action="store_true", help="Compute ES95 conditioning sensitivity (High-Low ΔES)")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -372,10 +381,68 @@ def main():
                 plt.grid(alpha=0.25, linestyle=':')
                 plt.tight_layout(); plt.savefig(Path(args.figdir)/f'sensitivity_exceedance_T{thr:.3f}_bar.png', dpi=150); plt.close()
 
+    # ES95 Expected Shortfall Conditioning (nach Basis-Metriken & Komponenten Samples)
+    if args.es95:
+        component_map_es = {
+            "balise": bal,
+            "map": map_err,
+            "odometry": odo,
+            "imu": imu,
+            "gnss_open": gnss_open_long,
+        }
+        es_rows = expected_shortfall_conditioning(fused, component_map_es, p=95.0)
+        if es_rows:
+            pd.DataFrame(es_rows).to_csv(out_dir / "sensitivity_es95.csv", index=False)
+            if not args.no_plots:
+                import matplotlib.pyplot as plt
+                params = [r['param'] for r in es_rows]
+                deltas = [r['delta_es_q95'] for r in es_rows]
+                y = np.arange(len(params))
+                plt.figure(figsize=(6.5, max(2.5, 0.45 * len(params))))
+                plt.barh(y, deltas, color='#1b9e77')
+                plt.yticks(y, params)
+                plt.xlabel('ΔES95 [m]')
+                plt.title('ES95 Sensitivität (High−Low)')
+                plt.grid(alpha=0.25, linestyle=':')
+                plt.tight_layout(); plt.savefig(Path(args.figdir)/'sensitivity_es95_bar.png', dpi=150); plt.close()
+
+    # Sobol Analyse (am Ende – teurer Schritt)
+    if args.sobol:
+        sobol_params = args.sobol_params if args.sobol_params else default_oat_params(cfg)
+        try:
+            sobol_res = sobol_sensitivity(
+                cfg,
+                sobol_params,
+                n_base=int(args.sobol_base),
+                mc_n=int(args.sobol_mc_n),
+                rng=np.random.default_rng(get_seed(cfg) + 12345),
+                metrics=["rmse_long", "rmse_2d", "p95_long"],
+                delta_pct=float(args.sobol_delta_pct),
+            )
+            for mname, rows in sobol_res.items():
+                pd.DataFrame(rows).to_csv(out_dir / f"sensitivity_sobol_{mname}.csv", index=False)
+            if not args.no_plots:
+                import matplotlib.pyplot as plt
+                for mname, rows in sobol_res.items():
+                    plt.figure(figsize=(6.5, max(2.5, 0.45 * len(rows))))
+                    params = [r['param'] for r in rows]
+                    ST = [r['ST'] for r in rows]
+                    S1 = [r['S1'] for r in rows]
+                    y = np.arange(len(params))
+                    plt.barh(y+0.18, ST, height=0.36, label='ST', color='#2b8cbe')
+                    plt.barh(y-0.18, S1, height=0.36, label='S1', color='#a6bddb')
+                    plt.yticks(y, params)
+                    plt.xlabel('Index [-]')
+                    plt.title(f'Sobol Indizes – {mname}')
+                    plt.legend(); plt.grid(alpha=0.25, linestyle=':')
+                    plt.tight_layout(); plt.savefig(Path(args.figdir)/f'sensitivity_sobol_{mname}.png', dpi=150); plt.close()
+        except RuntimeError as e:
+            print(f"Sobol Analyse übersprungen: {e}")
+
     print(
     f"Saved metrics (JSON + CSV) to {out_dir}. Plots={'on' if not args.no_plots else 'off'} (minimal={args.minimal_plots}). "
     f"Raw samples={'saved' if args.save_samples else 'skipped'}. Time-series={'on' if args.time_series else 'off'}. "
-    f"OAT={'on' if args.oat else 'off'}. SRC/PRCC={'on' if args.src_prcc else 'off'}. Quantile={'on' if args.quantile_conditioning else 'off'}. Exceedance={'on' if args.exceedance else 'off'}."
+    f"OAT={'on' if args.oat else 'off'}. SRC/PRCC={'on' if args.src_prcc else 'off'}. Quantile={'on' if args.quantile_conditioning else 'off'}. Exceedance={'on' if args.exceedance else 'off'}. Sobol={'on' if args.sobol else 'off'}. ES95={'on' if args.es95 else 'off'}."
     )
 
 
