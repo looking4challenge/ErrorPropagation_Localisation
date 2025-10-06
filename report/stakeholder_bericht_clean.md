@@ -563,9 +563,108 @@ sigma^2_fused = (sigma^2_sicher · sigma^2_unsicher) / (sigma^2_sicher + sigma^2
 - Seed-basierte Reproduzierbarkeit
 - Automatisierte Test-Suite für Regressionsschutz
 
-### 6.4 Erwarteter Berichtumfang
+### 6.4 Plot- und Nutzungsbeispiele (Simulation & Visualisierung)
+
+Dieser Abschnitt dokumentiert die standardisierten Aufrufe des Simulations-CLI sowie die erzeugten Plot-Artefakte. Ziel ist eine schnelle, reproduzierbare Bewertung sicherheitsrelevanter Pfade (SIL1) und Optimierungszyklen.
+
+#### 6.4.1 Kernbefehle
+
+Vollständiger Lauf (alle Detailplots, Einzel- & Gruppenvergleiche):
+
+```powershell
+python run_sim.py --config config/model.yml --out results --figdir figures
+```
+
+Minimaler Lauf (nur fused + Pfadvergleich, schneller für Parametertuning):
+
+```powershell
+python run_sim.py --config config/model.yml --out results --figdir figures --minimal-plots
+```
+
+Zeitreihen aktivieren (dynamische RMSE/P95/Var-Verläufe):
+
+```powershell
+python run_sim.py --config config/model.yml --out results --figdir figures --time-series
+```
+
+Rohstichproben speichern (für externe Analysen / Distribution-Fits):
+
+```powershell
+python run_sim.py --config config/model.yml --out results --figdir figures --save-samples
+```
+
+Mehrere Optionen kombinierbar, z.B. schneller dynamischer Run:
+
+```powershell
+python run_sim.py --config config/model.yml --out results --figdir figures --time-series --minimal-plots
+```
+
+#### 6.4.2 Erzeugte Kern-Artefakte
+
+| Datei (results/) | Inhalt | Zweck |
+|------------------|--------|-------|
+| metrics_all.csv | Aggregierte Kennzahlen aller Komponenten | Tabellarische Auswertung |
+| metrics_*.json | Einzelmetriken je Komponente (balise, map, odometry, imu, gnss_open, secure, unsafe, fused) | Automatisierbare Weiterverarbeitung |
+| legend_table.csv | RMSE & P95 + Farbcode für alle dargestellten Komponenten | Konsistente Legenden-Erstellung / Bericht |
+| time_series_metrics.csv | (Optional) Zeitverlauf RMSE/P95/Var/OoS-Anteil | Dynamik-Bewertung |
+| samples.csv | (Optional) Rohsamples für Distribution-Analyse | Validierung / Fit |
+
+| Datei (figures/) | Plot-Typ | Beschreibung |
+|------------------|----------|--------------|
+| fused_pdf.png / fused_cdf.png | PDF / CDF | Verteilung Fusionspfad (SIL1-Bewertung) |
+| fused_qq.png | QQ-Plot | Normalitätsprüfung (nur Full-Mode) |
+| paths_pdf.png / paths_cdf.png | PDF / CDF | Vergleich Sicher / Unsicher / Fusion |
+| core_components_pdf.png / core_components_cdf.png | PDF / CDF | Balise / Map / Odometrie Vergleich (nur Full-Mode) |
+| balise_pdf.png / map_pdf.png / odometry_pdf.png | Einzel-PDFs | Detailprüfung Komponentengestalt (nur Full-Mode) |
+| secure_pdf.png / unsafe_pdf.png | Einzel-PDF | Pfadcharakteristika (nur Full-Mode) |
+| fused_time_metrics.png | Zeitreihe | RMSE & P95 (optional) |
+| component_variances.png | Zeitreihe | Varianzen sicher/unsicher (Gewichtungsdiagnose) |
+| share_out_of_spec.png | Zeitreihe | Anteil \|Fehler\| > Schwelle (Robustheit) |
+
+#### 6.4.3 Legendentabelle
+
+Die Datei `legend_table.csv` stellt eine normative Referenz für Farb- und Kennzahlenkonsistenz bereit. Spalten:
+
+- component: Schlüsselname (Mapping zu Farbschema)
+- rmse_m: Root Mean Square Error (Meter)
+- p95_m: 95%-Perzentil (Meter)
+- color_hex: Hexadezimaler Farbcode (Plot-Konsistenz)
+
+Verwendung im Bericht / Dashboard Automatisierung:
+
+1. Laden der CSV (pandas) ⇒ Join mit weiteren Metriken möglich
+2. Sortierung nach rmse_m für Ranking-Visualisierung
+3. Verwendung der Farbspalte für Balkendiagramme / Legenden
+
+#### 6.4.4 Empfohlener Bewertungs-Workflow (SIL1 Fokus)
+
+
+1. Prüfe `fused_pdf.png` & `fused_cdf.png` ⇒ Erfüllt P95 / RMSE Ziel?
+2. Vergleiche `paths_cdf.png` ⇒ Gewinn durch Fusion gegenüber secure/unsafe isoliert
+3. Bei Ausreißern: Analyse `core_components_*` ⇒ dominante Fehlerquelle identifizieren
+4. Zeitabhängig (falls aktiviert): `fused_time_metrics.png` prüfen (Transienten / Drift)
+5. Dokumentation: Werte aus `legend_table.csv` mit Commit-Hash archivieren
+
+#### 6.4.5 Performance-Hinweise
+
+- `--minimal-plots` reduziert I/O & Rendering (≈ 30–40% schneller bei großen N)
+- Für Parametertuning zusätzlich `--override-n 2000` verwenden und erst final N=10000 fahren
+- Zeitreihen nur aktivieren wenn Trendanalyse erforderlich (`--time-series`)
+
+#### 6.4.6 Erweiterungspotential
+
+- Automatisches Einbetten der Legendentabelle als Markdown (Option `--export-legend-md` geplant)
+- P95 Ziel-Linie (Threshold Overlay) in PDF/CDF Plots
+- Lateral/2D-Erweiterung mit dualem Farbschema (Suffix `_lat`)
+
+---
+
+### 6.5 Erwarteter Berichtumfang
+
+<!-- Abschnittsnummer verschoben wegen eingefügtem 6.4 Plot- und Nutzungsbeispiele -->
 
 **Finale Deliverables:**
+
 - Methodenbericht (10-15 Seiten) mit vollständiger Dokumentation
 - Kennzahlen-Tabellen mit Konfidenzintervallen
 - Visualisierungen: PDF/CDF, Zeitreihen, Sensitivitäts-Rankings
@@ -579,6 +678,7 @@ sigma^2_fused = (sigma^2_sicher · sigma^2_unsicher) / (sigma^2_sicher + sigma^2
 ## 7. Stakeholder-Feedback und Freigabe
 
 **Erforderliche Bestätigungen:**
+
 1. Vollständigkeit der berücksichtigten Fehlerquellen
 2. Plausibilität der Fehlerparameter und -modelle  
 3. Angemessenheit der Korrelationsannahmen

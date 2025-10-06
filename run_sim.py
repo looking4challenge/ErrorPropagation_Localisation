@@ -17,7 +17,14 @@ from src.sim_sensors import (
 )
 from src.metrics import summarize, bootstrap_ci, rmse
 from src.fusion import fuse_pair
-from src.plots import plot_pdf, plot_cdf, plot_qq
+from src.plots import (
+    plot_pdf,
+    plot_cdf,
+    plot_qq,
+    plot_multi_pdf,
+    plot_multi_cdf,
+    COLORS,
+)
 from src.time_sim import simulate_time_series
 
 
@@ -27,6 +34,7 @@ def main():
     ap.add_argument("--out", required=True, help="Output directory for metrics & samples")
     ap.add_argument("--figdir", default="figures", help="Directory for generated plots")
     ap.add_argument("--no-plots", action="store_true", help="Disable plot generation")
+    ap.add_argument("--minimal-plots", action="store_true", help="Nur Kernplots (fused PDF/CDF + Pfadvergleich) erzeugen")
     ap.add_argument("--save-samples", action="store_true", help="Persist raw sample errors to CSV")
     ap.add_argument("--time-series", action="store_true", help="Run time-series simulation (RMSE(t), P95(t), Var paths)")
     ap.add_argument("--oos-threshold", type=float, default=0.2, help="Out-of-spec threshold for share_oos metric (m)")
@@ -111,16 +119,56 @@ def main():
         })
         df_samples.to_csv(out_dir / "samples.csv", index=False)
 
-    # Plots
+    # Plots & Legendentabelle
     if not args.no_plots:
-        fig_dir = Path(args.figdir)
+        fig_dir: Path = Path(args.figdir)  # explicit type for static analyzers
         fig_dir.mkdir(parents=True, exist_ok=True)
-        plot_pdf(fused, fig_dir / "fused_pdf.png", title="Fused Error PDF")
-        plot_cdf(fused, fig_dir / "fused_cdf.png", title="Fused Error CDF")
-        plot_qq(fused, fig_dir / "fused_qq.png", title="Fused Error QQ")
-        # Also secure/unsafe for comparison
-        plot_pdf(secure, fig_dir / "secure_pdf.png", title="Secure Path PDF")
-        plot_pdf(unsafe, fig_dir / "unsafe_pdf.png", title="Unsafe Path PDF")
+
+        # Kernplots immer
+        plot_pdf(fused, fig_dir / "fused_pdf.png", title="Fusionierter Positionsfehler – PDF", color=COLORS.get("fused"))
+        plot_cdf(fused, fig_dir / "fused_cdf.png", title="Fusionierter Positionsfehler – CDF", color=COLORS.get("fused"))
+        plot_multi_pdf(
+            {"secure": secure, "unsafe": unsafe, "fused": fused},
+            fig_dir / "paths_pdf.png",
+            title="Pfadvergleich Sicher / Unsicher / Fusion – PDF",
+        )
+        plot_multi_cdf(
+            {"secure": secure, "unsafe": unsafe, "fused": fused},
+            fig_dir / "paths_cdf.png",
+            title="Pfadvergleich Sicher / Unsicher / Fusion – CDF",
+        )
+
+        if not args.minimal_plots:
+            # Detailplots nur wenn nicht minimal
+            plot_qq(fused, fig_dir / "fused_qq.png", title="Fusionierter Positionsfehler – QQ")
+            plot_pdf(secure, fig_dir / "secure_pdf.png", title="Sicherer Pfad – PDF", color=COLORS.get("secure"))
+            plot_pdf(unsafe, fig_dir / "unsafe_pdf.png", title="Unsicherer Pfad – PDF", color=COLORS.get("unsafe"))
+            plot_pdf(bal, fig_dir / "balise_pdf.png", title="Balise Fehler – PDF", color=COLORS.get("balise"))
+            plot_pdf(map_err, fig_dir / "map_pdf.png", title="Kartenfehler – PDF", color=COLORS.get("map"))
+            plot_pdf(odo, fig_dir / "odometry_pdf.png", title="Odometrie Drift/Segmentfehler – PDF", color=COLORS.get("odometry"))
+            plot_multi_pdf(
+                {"balise": bal, "map": map_err, "odometry": odo},
+                fig_dir / "core_components_pdf.png",
+                title="Kernkomponenten Balise/Map/Odometrie – PDF Vergleich",
+            )
+            plot_multi_cdf(
+                {"balise": bal, "map": map_err, "odometry": odo},
+                fig_dir / "core_components_cdf.png",
+                title="Kernkomponenten Balise/Map/Odometrie – CDF Vergleich",
+            )
+
+        # Legendentabelle (RMSE & P95) für alle bekannten Komponenten
+        legend_rows = []
+        for cname, metrics in json_map.items():
+            # p95 Feld ist p95
+            legend_rows.append({
+                "component": cname,
+                "rmse_m": metrics.get("rmse"),
+                "p95_m": metrics.get("p95"),
+                "color_hex": COLORS.get(cname, "#000000"),
+            })
+        df_legend = pd.DataFrame(legend_rows)
+        df_legend.to_csv(out_dir / "legend_table.csv", index=False)
 
     # Optional time-series run
     if args.time_series:
@@ -139,18 +187,27 @@ def main():
             import matplotlib.pyplot as plt
             fig_dir = Path(args.figdir)
             plt.figure(figsize=(6,3))
-            plt.plot(ts_res.times, ts_res.rmse, label="RMSE")
-            plt.plot(ts_res.times, ts_res.p95, label="P95")
-            plt.xlabel("t [s]"); plt.ylabel("Error [m]"); plt.title("Fused Error Time Metrics"); plt.legend(); plt.tight_layout(); plt.savefig(fig_dir/"fused_time_metrics.png", dpi=150); plt.close()
+            plt.plot(ts_res.times, ts_res.rmse, label="RMSE [m]")
+            plt.plot(ts_res.times, ts_res.p95, label="P95 [m]")
+            plt.xlabel("Zeit t [s]"); plt.ylabel("Positionsfehler [m]")
+            plt.title("Zeitverlauf Fusionspfad – RMSE & P95")
+            plt.legend(); plt.tight_layout(); plt.savefig(fig_dir/"fused_time_metrics.png", dpi=150); plt.close()
             plt.figure(figsize=(6,3))
-            plt.plot(ts_res.times, ts_res.var_secure, label="Var secure")
-            plt.plot(ts_res.times, ts_res.var_unsafe, label="Var unsafe")
-            plt.xlabel("t [s]"); plt.ylabel("Var [m^2]"); plt.title("Component Variances"); plt.legend(); plt.tight_layout(); plt.savefig(fig_dir/"component_variances.png", dpi=150); plt.close()
+            plt.plot(ts_res.times, ts_res.var_secure, label="Var sicher [m²]")
+            plt.plot(ts_res.times, ts_res.var_unsafe, label="Var unsicher [m²]")
+            plt.xlabel("Zeit t [s]"); plt.ylabel("Varianz [m²]")
+            plt.title("Komponenten-Varianzen über Zeit")
+            plt.legend(); plt.tight_layout(); plt.savefig(fig_dir/"component_variances.png", dpi=150); plt.close()
             plt.figure(figsize=(6,3))
-            plt.plot(ts_res.times, ts_res.share_oos, label="> threshold")
-            plt.xlabel("t [s]"); plt.ylabel("Share"); plt.title("Out-of-Spec Share"); plt.legend(); plt.tight_layout(); plt.savefig(fig_dir/"share_out_of_spec.png", dpi=150); plt.close()
+            plt.plot(ts_res.times, ts_res.share_oos, label="> Schwelle")
+            plt.xlabel("Zeit t [s]"); plt.ylabel("Anteil [-]")
+            plt.title("Out-of-Spec Anteil (|Fehler| > Schwelle)")
+            plt.legend(); plt.tight_layout(); plt.savefig(fig_dir/"share_out_of_spec.png", dpi=150); plt.close()
 
-    print(f"Saved metrics (JSON + CSV) to {out_dir}. Plots={'on' if not args.no_plots else 'off'}. Raw samples={'saved' if args.save_samples else 'skipped'}. Time-series={'on' if args.time_series else 'off'}.")
+    print(
+        f"Saved metrics (JSON + CSV) to {out_dir}. Plots={'on' if not args.no_plots else 'off'} (minimal={args.minimal_plots}). "
+        f"Raw samples={'saved' if args.save_samples else 'skipped'}. Time-series={'on' if args.time_series else 'off'}."
+    )
 
 
 if __name__ == "__main__":
