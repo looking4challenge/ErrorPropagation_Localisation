@@ -54,6 +54,21 @@ def simulate_gnss_bias_noise(cfg: Config, n: int, rng: np.random.Generator, mode
     return bias + noise + tail
 
 
+def simulate_gnss_bias_noise_2d(cfg: Config, n: int, rng: np.random.Generator, mode: str) -> Tuple[np.ndarray, np.ndarray]:
+    """Return longitudinal & lateral GNSS error using dedicated lateral specs if present.
+
+    Assumes independence between axes conditional on mode (first-order; cross-correlation typically small for metre-level biases).
+    """
+    gnss_mode = cfg.sensors["gnss"]["modes"][mode]
+    long = simulate_gnss_bias_noise(cfg, n, rng, mode)
+    bias_lat_spec = gnss_mode.get("bias_lat", gnss_mode["bias"])
+    noise_lat_spec = gnss_mode.get("noise_lat", gnss_mode["noise"])
+    bias_lat = registry.sample(bias_lat_spec, n, rng)
+    noise_lat = registry.sample(noise_lat_spec, n, rng)
+    tail_lat = 0.0  # Lateral multipath tail not yet parameterised
+    return long, bias_lat + noise_lat + tail_lat
+
+
 def simulate_map_error(cfg: Config, n: int, rng: np.random.Generator) -> np.ndarray:
     m = cfg.sensors["map"]
     long_ref = registry.sample(m["longitudinal"]["ref_error"], n, rng)
@@ -102,6 +117,7 @@ __all__ = [
     "simulate_balise_errors",
     "simulate_balise_errors_2d",
     "simulate_gnss_bias_noise",
+    "simulate_gnss_bias_noise_2d",
     "simulate_map_error",
     "simulate_map_error_2d",
     "simulate_odometry_segment_error",

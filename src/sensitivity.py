@@ -1,6 +1,7 @@
 """Sensitivity analysis: One-at-a-Time (OAT) and optional Sobol (if SALib installed).
 
-Focus now: OAT ±delta_pct for selected scalar parameters influencing longitudinal error.
+Current implementation: longitudinal RMSE proxy. Extension hooks: lateral / 2D by switching
+`base_longitudinal_samples` to a vector composition including lateral GNSS / map / balise components.
 """
 from __future__ import annotations
 

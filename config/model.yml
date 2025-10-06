@@ -92,20 +92,36 @@ sensors:
           dist: normal
           mean: 0.0
           std: 0.25
+        bias_lat:              # Quer-Bias (eigene Parametrisierung; angenommen ähnlich aber geringfügig kleiner)
+          dist: normal
+          mean: 0.0
+          std: 0.22
         noise:
           dist: normal
           mean: 0.0
           std: 0.30
+        noise_lat:
+          dist: normal
+          mean: 0.0
+          std: 0.28
         outage_prob: 0.01
       urban:
         bias:
           dist: normal
           mean: 0.0
           std: 0.50
+        bias_lat:
+          dist: normal
+          mean: 0.0
+          std: 0.45
         noise:
           dist: normal
           mean: 0.0
           std: 0.80
+        noise_lat:
+          dist: normal
+          mean: 0.0
+          std: 0.75
         multipath_tail:
           dist: trunc_exp
           lambda: 2.0

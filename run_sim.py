@@ -187,15 +187,25 @@ def main():
 
     # Optional time-series run
     if args.time_series:
-        ts_res = simulate_time_series(cfg, rng, threshold_oos=args.oos_threshold)
-        ts_df = pd.DataFrame({
+        ts_res = simulate_time_series(cfg, rng, threshold_oos=args.oos_threshold, with_lateral=True)
+        data_map = {
             "t_s": ts_res.times,
-            "rmse": ts_res.rmse,
-            "p95": ts_res.p95,
-            "var_secure": ts_res.var_secure,
-            "var_unsafe": ts_res.var_unsafe,
-            "share_out_of_spec": ts_res.share_oos,
-        })
+            "rmse_long": ts_res.rmse,
+            "p95_long": ts_res.p95,
+            "var_secure_long": ts_res.var_secure,
+            "var_unsafe_long": ts_res.var_unsafe,
+            "share_out_of_spec_long": ts_res.share_oos,
+        }
+        # Optional lateral / 2D
+        if ts_res.rmse_lat is not None:
+            data_map["rmse_lat"] = ts_res.rmse_lat
+        if ts_res.p95_lat is not None:
+            data_map["p95_lat"] = ts_res.p95_lat
+        if ts_res.rmse_2d is not None:
+            data_map["rmse_2d"] = ts_res.rmse_2d
+        if ts_res.p95_2d is not None:
+            data_map["p95_2d"] = ts_res.p95_2d
+        ts_df = pd.DataFrame(data_map)
         ts_df.to_csv(out_dir / "time_series_metrics.csv", index=False)
         if not args.no_plots:
             # Simple time plots

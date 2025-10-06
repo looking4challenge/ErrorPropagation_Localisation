@@ -27,13 +27,13 @@
 - [x] Monte-Carlo Ausführung (run_sim erweitert)
 - [x] Metriken berechnen & speichern (JSON + CSV)
 - [x] Plots generieren (PDF/CDF/QQ + Komponenten PDFs)
-- [ ] Zeitreihen / Modus-Vergleich (pending Erweiterung Zeitdynamik)
-- [ ] Lateral/2D Erweiterung (pending)
+- [x] Zeitreihen / Modus-Vergleich (Grundgerüst + lateral/2D Metriken integriert)
+- [ ] Lateral/2D Erweiterung (Feinschliff)
   - [x] Zeitreihen Grundgerüst (longitudinal, open mode)
   - [x] Modus-Vergleich (urban/tunnel) (statische Epochensamples)
   - [x] Lateral Fehlerpfad hinzugefügt (Balise/Map quer, vereinfachte Annahmen)
-  - [ ] Verbesserte 2D Fusion (separate Gewichtung longitudinal/lateral)
-  - [ ] Realistischere Lateral-Unsicherer Pfad (GNSS Quer vs. Bias Proxy)
+  - [x] Verbesserte 2D Fusion (separate Gewichtung longitudinal/lateral im Zeitmodell)
+  - [ ] Realistischere Lateral-Unsicherer Pfad (eigene GNSS Quer Noise/Bias Parametrisierung statt Kopie)
 
 ## Phase 5 - Sensitivität & Validierung
 
