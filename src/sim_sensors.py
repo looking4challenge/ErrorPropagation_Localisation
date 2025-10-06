@@ -5,7 +5,7 @@ Will be extended with time-dynamic behaviour later.
 """
 from __future__ import annotations
 
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 import numpy as np
 
 from .config import Config
@@ -25,6 +25,21 @@ def simulate_balise_errors(cfg: Config, n: int, rng: np.random.Generator) -> np.
     heavy = sample_mixture(np.zeros(n), multipath, bal["multipath_tail_m"]["weight"], rng)
     err_long = v * latency + antenna + em + heavy + weather
     return err_long
+
+
+def simulate_balise_errors_2d(cfg: Config, n: int, rng: np.random.Generator) -> Tuple[np.ndarray, np.ndarray]:
+    """Return longitudinal and lateral balise errors separately.
+
+    Lateral distribution added in config (normal). Independence between axes assumed
+    (first-order; cross-axis correlation negligible at cm-level for SIL1 context).
+    """
+    long = simulate_balise_errors(cfg, n, rng)
+    lat_spec = cfg.sensors["balise"].get("lateral")
+    if lat_spec is None:
+        lat = np.zeros(n)
+    else:
+        lat = registry.sample(lat_spec, n, rng)
+    return long, lat
 
 
 def simulate_gnss_bias_noise(cfg: Config, n: int, rng: np.random.Generator, mode: str) -> np.ndarray:
@@ -48,6 +63,17 @@ def simulate_map_error(cfg: Config, n: int, rng: np.random.Generator) -> np.ndar
     return long_ref + interp_mix
 
 
+def simulate_map_error_2d(cfg: Config, n: int, rng: np.random.Generator) -> Tuple[np.ndarray, np.ndarray]:
+    """Return longitudinal, lateral map errors (independent distributions)."""
+    long = simulate_map_error(cfg, n, rng)
+    lat_spec = cfg.sensors["map"].get("lateral", {}).get("ref_error")
+    if lat_spec:
+        lat = registry.sample(lat_spec, n, rng)
+    else:
+        lat = np.zeros(n)
+    return long, lat
+
+
 def simulate_odometry_segment_error(cfg: Config, n: int, rng: np.random.Generator, segment_m: float = 500.0) -> np.ndarray:
     o = cfg.sensors["odometry"]
     quant_step = o["quant_step_m"]
@@ -67,10 +93,18 @@ def simulate_imu_bias_position_error(cfg: Config, n: int, rng: np.random.Generat
     return 0.5 * accel_bias * duration_s ** 2
 
 
+def combine_2d(long: np.ndarray, lat: np.ndarray) -> np.ndarray:
+    """Return 2D radial error magnitude sqrt(long^2 + lat^2)."""
+    return np.sqrt(long**2 + lat**2)
+
+
 __all__ = [
     "simulate_balise_errors",
+    "simulate_balise_errors_2d",
     "simulate_gnss_bias_noise",
     "simulate_map_error",
+    "simulate_map_error_2d",
     "simulate_odometry_segment_error",
     "simulate_imu_bias_position_error",
+    "combine_2d",
 ]

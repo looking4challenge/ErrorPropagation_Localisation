@@ -53,6 +53,10 @@ sensors:
         p_ok_to_deg: 1.0e-6
         p_deg_to_ok: 0.01
         p_detect_degraded: 0.95
+    lateral:               # Neu: Querfehlermodell gemäß decisions.log (μ=0.032 m, σ=0.009 m)
+      dist: normal
+      mean: 0.032
+      std: 0.009
   odometry:
     quant_step_m: 0.0134          # Radumfang/Impulse
     residual_circumference_m:

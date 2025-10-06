@@ -30,19 +30,23 @@
 - [ ] Zeitreihen / Modus-Vergleich (pending Erweiterung Zeitdynamik)
 - [ ] Lateral/2D Erweiterung (pending)
   - [x] Zeitreihen Grundgerüst (longitudinal, open mode)
-  - [ ] Modus-Vergleich (urban/tunnel)
-  - [ ] Lateral Fehlerpfad hinzufügen
+  - [x] Modus-Vergleich (urban/tunnel) (statische Epochensamples)
+  - [x] Lateral Fehlerpfad hinzugefügt (Balise/Map quer, vereinfachte Annahmen)
+  - [ ] Verbesserte 2D Fusion (separate Gewichtung longitudinal/lateral)
+  - [ ] Realistischere Lateral-Unsicherer Pfad (GNSS Quer vs. Bias Proxy)
 
 ## Phase 5 - Sensitivität & Validierung
 
 - [ ] OAT Sensitivität
 - [ ] Sobol optional
 - [ ] Validierung gegen Daten (falls vorhanden)
+  - [ ] Quer/Längs Residuen getrennt (falls Daten 2D enthalten)
 
 ## Phase 6 - Bericht
 
 - [ ] Markdown Bericht erstellen
 - [ ] Akzeptanzkriterien prüfen
+  - [ ] 2D Kennzahlen (RMSE_2D, P95_2D) dokumentieren
 
 ## Dauerhaft
 

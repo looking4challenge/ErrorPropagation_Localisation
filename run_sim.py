@@ -10,10 +10,13 @@ from datetime import datetime, UTC
 from src.config import load_config, get_seed
 from src.sim_sensors import (
     simulate_balise_errors,
+    simulate_balise_errors_2d,
     simulate_gnss_bias_noise,
     simulate_map_error,
+    simulate_map_error_2d,
     simulate_odometry_segment_error,
     simulate_imu_bias_position_error,
+    combine_2d,
 )
 from src.metrics import summarize, bootstrap_ci, rmse
 from src.fusion import fuse_pair
@@ -48,12 +51,19 @@ def main():
     # Timestamp for provenance
     ts = datetime.now(UTC).isoformat()
 
-    # Draw per-sensor longitudinal error approximations for a single representative epoch
+    # Draw per-sensor longitudinal (and lateral where defined) errors for a single representative epoch
     bal = simulate_balise_errors(cfg, n, rng)
+    bal_long, bal_lat = simulate_balise_errors_2d(cfg, n, rng)
     map_err = simulate_map_error(cfg, n, rng)
+    map_long, map_lat = simulate_map_error_2d(cfg, n, rng)
     odo = simulate_odometry_segment_error(cfg, n, rng)
     imu = simulate_imu_bias_position_error(cfg, n, rng)
     gnss_open = simulate_gnss_bias_noise(cfg, n, rng, mode="open")
+    # Mode comparison (open/urban/tunnel) longitudinal only for now
+    gnss_modes_samples = {}
+    for mode_name in ["open", "urban", "tunnel"]:
+        if mode_name in cfg.sensors["gnss"]["modes"]:
+            gnss_modes_samples[f"gnss_{mode_name}"] = simulate_gnss_bias_noise(cfg, n, rng, mode=mode_name)
 
     # Proxy: secure path (balise + odometry + map) aggregated as sum (assuming independence for now)
     secure = bal + odo + map_err
@@ -74,6 +84,15 @@ def main():
     metrics_unsafe = summarize(unsafe)
     metrics_fused = summarize(fused)
 
+    # Lateral & 2D metrics (combine map + balise laterals; odometry/imu lateral neglected placeholder)
+    lateral_secure = bal_lat + map_lat  # odometry lateral drift ~ negligible (assumption logged)
+    # Assume unsafe path lateral dominated by GNSS (bias/noise) — reuse gnss_open as lateral proxy (first-order)
+    lateral_unsafe = gnss_open  # simplification
+    # 2D combine
+    fused_2d = combine_2d(fused, (lateral_secure + lateral_unsafe) / 2.0)  # crude merge placeholder
+    metrics_fused["rmse_2d"] = float(np.sqrt(np.mean(fused_2d**2)))
+    metrics_fused["p95_2d"] = float(np.percentile(fused_2d, 95))
+
     # Bootstrap CI for RMSE fused
     rmse_ci = bootstrap_ci(fused, rmse, B=int(cfg.sim.get("B_bootstrap", 200)), alpha=0.05, rng=rng)
     metrics_fused["rmse_ci95_lower"], metrics_fused["rmse_ci95_upper"] = rmse_ci
@@ -92,6 +111,9 @@ def main():
         "unsafe": metrics_unsafe,
         "fused": metrics_fused,
     }
+    # Add mode comparison metrics
+    for mname, sample in gnss_modes_samples.items():
+        json_map[mname] = summarize(sample)
     for name, m in json_map.items():
         payload = {"component": name, "metrics": m, **provenance}
         with (out_dir / f"metrics_{name}.json").open("w") as f:
@@ -127,16 +149,17 @@ def main():
         # Kernplots immer
         plot_pdf(fused, fig_dir / "fused_pdf.png", title="Fusionierter Positionsfehler – PDF", color=COLORS.get("fused"))
         plot_cdf(fused, fig_dir / "fused_cdf.png", title="Fusionierter Positionsfehler – CDF", color=COLORS.get("fused"))
-        plot_multi_pdf(
-            {"secure": secure, "unsafe": unsafe, "fused": fused},
-            fig_dir / "paths_pdf.png",
-            title="Pfadvergleich Sicher / Unsicher / Fusion – PDF",
-        )
+        plot_multi_pdf({"secure": secure, "unsafe": unsafe, "fused": fused}, fig_dir / "paths_pdf.png", title="Pfadvergleich Sicher / Unsicher / Fusion – PDF")
         plot_multi_cdf(
             {"secure": secure, "unsafe": unsafe, "fused": fused},
             fig_dir / "paths_cdf.png",
             title="Pfadvergleich Sicher / Unsicher / Fusion – CDF",
         )
+
+        # GNSS mode comparison
+        if len(gnss_modes_samples) > 1:
+            plot_multi_pdf(gnss_modes_samples, fig_dir / "gnss_modes_pdf.png", title="GNSS Modi – PDF Vergleich")
+            plot_multi_cdf(gnss_modes_samples, fig_dir / "gnss_modes_cdf.png", title="GNSS Modi – CDF Vergleich")
 
         if not args.minimal_plots:
             # Detailplots nur wenn nicht minimal
@@ -146,16 +169,8 @@ def main():
             plot_pdf(bal, fig_dir / "balise_pdf.png", title="Balise Fehler – PDF", color=COLORS.get("balise"))
             plot_pdf(map_err, fig_dir / "map_pdf.png", title="Kartenfehler – PDF", color=COLORS.get("map"))
             plot_pdf(odo, fig_dir / "odometry_pdf.png", title="Odometrie Drift/Segmentfehler – PDF", color=COLORS.get("odometry"))
-            plot_multi_pdf(
-                {"balise": bal, "map": map_err, "odometry": odo},
-                fig_dir / "core_components_pdf.png",
-                title="Kernkomponenten Balise/Map/Odometrie – PDF Vergleich",
-            )
-            plot_multi_cdf(
-                {"balise": bal, "map": map_err, "odometry": odo},
-                fig_dir / "core_components_cdf.png",
-                title="Kernkomponenten Balise/Map/Odometrie – CDF Vergleich",
-            )
+            plot_multi_pdf({"balise": bal, "map": map_err, "odometry": odo}, fig_dir / "core_components_pdf.png", title="Kernkomponenten Balise/Map/Odometrie – PDF Vergleich")
+            plot_multi_cdf({"balise": bal, "map": map_err, "odometry": odo}, fig_dir / "core_components_cdf.png", title="Kernkomponenten Balise/Map/Odometrie – CDF Vergleich")
 
         # Legendentabelle (RMSE & P95) für alle bekannten Komponenten
         legend_rows = []
