@@ -2,22 +2,25 @@
 
 ## Phase 1 - Interview & Workspace Scan
 
-- [ ] Betriebsprofil vom Nutzer erheben
-- [ ] Sensorparameter verifizieren/ergänzen
-- [ ] Fusionsansatz bestätigen
+- [x] Betriebsprofil vom Nutzer erheben
+- [x] Sensorparameter verifizieren/ergänzen
+- [x] Fusionsansatz bestätigen
 - [ ] Validierungsdaten lokalisieren & Schema erfassen
-- [ ] Verteilungs- und Korrelationsannahmen validieren
+- [x] Verteilungs- und Korrelationsannahmen validieren (methodisch)
 
 ## Phase 2 - Konfiguration finalisieren
 
-- [ ] `config/model.yml` aktualisieren
-- [ ] Korrelationstest-Skript planen
+- [x] `config/model.yml` aktualisieren
+- [x] Korrelationstest-Skript implementieren
 
 ## Phase 3 - Code Skeleton & Tests
 
-- [ ] Module anlegen (config, distributions, sim_sensors, fusion, metrics, sensitivity, plots)
-- [ ] CLI `run_sim.py`
-- [ ] PyTest Grundgerüst
+- [x] Module anlegen (config, distributions, sim_sensors, fusion, metrics)
+- [x] Module sensitivity, plots erstellen
+- [x] CLI `run_sim.py`
+- [x] PyTest Grundgerüst
+- [x] Test für Korrelationen
+- [x] Test für GNSS Noise Sensitivität
 
 ## Phase 4 - Simulation & Auswertung
 

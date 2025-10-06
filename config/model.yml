@@ -1,81 +1,146 @@
 project:
-  name: TBD_PROJECT_NAME
+  name: ErrorPropagation_Localisation
   author: TBD_AUTHOR
   date: 2025-10-06
 sim:
-  N_samples: 1000        # Monte Carlo sample count (initial placeholder)
-  time_horizon_s: 300    # total simulated time [s]
-  dt_s: 1.0              # timestep [s]
+  N_samples: 10000          # MC sample count (target for stable P99)
+  time_horizon_s: 3600      # 1 h Betrieb
+  dt_s: 0.1                 # 100 ms Auflösung
   random_seed: 12345
-  B_bootstrap: 500       # bootstrap resamples for CI
-  rho_tol: 0.05          # tolerance for correlation validation (abs diff)
-  delta_pct: 10          # OAT sensitivity perturbation percent
+  B_bootstrap: 500          # Bootstrap resamples (95% CI)
+  rho_tol: 0.05             # |ρ_sample - ρ_target| Toleranz
+  delta_pct: 10             # OAT Perturbation ±10%
 modes: ["open","urban","tunnel"]
 correlations:
   use_copula: true
   type: gaussian
-  # Square correlation matrix placeholder (sensors: gnss_bias, gnss_noise, odo_scale, imu_acc_bias, imu_gyro_bias, map_ref)
+  variables: [map, gnss, balise, odometry, imu]
+  # Korrelationsmatrix gemäß Abschnitt 4.3 (symmetrisch, PD angenähert)
   rho_matrix:
-    - [1.0, 0.2, 0.1, 0.0, 0.0, 0.1]
-    - [0.2, 1.0, 0.15, 0.05, 0.0, 0.1]
-    - [0.1, 0.15, 1.0, 0.05, 0.05, 0.0]
-    - [0.0, 0.05, 0.05, 1.0, 0.2, 0.0]
-    - [0.0, 0.0, 0.05, 0.2, 1.0, 0.0]
-    - [0.1, 0.1, 0.0, 0.0, 0.0, 1.0]
+    - [1.0, 0.80, 0.65, 0.10, 0.05]   # map
+    - [0.80, 1.0, 0.30, 0.25, 0.20]    # gnss
+    - [0.65, 0.30, 1.0, 0.80, 0.15]    # balise
+    - [0.10, 0.25, 0.80, 1.0, 0.40]    # odometry
+    - [0.05, 0.20, 0.15, 0.40, 1.0]    # imu
 sensors:
-  gnss:
-    bias_m:
+  balise:
+    latency_ms:
+      dist: trunc_normal
+      mean: 10.0
+      std: 2.0
+      lower: 6.0
+      upper: 14.0
+    antenna_offset_m:
       dist: normal
-      mean: 0.5     # m (placeholder)
-      std: 1.0      # m
-    noise_m:
-      dist: lognormal
-      mean: 0.0     # underlying normal mean
-      sigma: 0.3    # underlying normal std
-    outage_prob: 0.02  # probability per timestep of GNSS outage
+      mean: 0.0
+      std: 0.02
+    em_disturbance_m:
+      dist: rayleigh
+      sigma: 0.012
+    multipath_tail_m:
+      dist: trunc_exp
+      lambda: 0.05
+      cap: 0.08
+      weight: 0.15
+    weather_uniform_m:
+      dist: uniform
+      low: -0.015
+      high: 0.015
+    detection:
+      p_detect_nominal: 0.99995
+      markov:
+        use: true
+        p_ok_to_deg: 1.0e-6
+        p_deg_to_ok: 0.01
+        p_detect_degraded: 0.95
   odometry:
-    scale_error_ppm:
-      dist: normal
-      mean: 100.0   # ppm
-      std: 30.0     # ppm
-    noise_mps:
-      dist: normal
-      mean: 0.0
-      std: 0.05     # m/s
-    drift_mps2:
-      dist: normal
-      mean: 0.0
-      std: 0.002    # m/s^2
+    quant_step_m: 0.0134          # Radumfang/Impulse
+    residual_circumference_m:
+      dist: uniform
+      low: -0.03
+      high: 0.03
+    drift_per_km_m: 0.010         # σ Drift (m / km)
+  map:
+    longitudinal:
+      ref_error:
+        dist: normal
+        mean: 0.0
+        std: 0.019
+      interpolation:
+        dist: trunc_exp
+        lambda: 0.02
+        cap: 0.05
+        weight: 0.30
+      scale:
+        dist: normal
+        mean: 0.0
+        std: 0.0006              # 0.06% → α
+        activation_distance_m: 2000
+    lateral:
+      ref_error:
+        dist: normal
+        mean: 0.0
+        std: 0.014
+  gnss:
+    modes:
+      open:
+        bias:
+          dist: normal
+          mean: 0.0
+          std: 0.25
+        noise:
+          dist: normal
+          mean: 0.0
+          std: 0.30
+        outage_prob: 0.01
+      urban:
+        bias:
+          dist: normal
+          mean: 0.0
+          std: 0.50
+        noise:
+          dist: normal
+          mean: 0.0
+          std: 0.80
+        multipath_tail:
+          dist: trunc_exp
+          lambda: 2.0
+          cap: 3.0
+          weight: 0.10
+        outage_prob: 0.05
+      tunnel:
+        outage_prob: 1.0
+        hold_last_valid_s: 30.0
   imu:
     accel_bias_mps2:
       dist: normal
-      mean: 0.01
-      std: 0.02
+      mean: 0.0
+      std: 0.005
+      rw_tau_s: 900
     gyro_bias_dps:
       dist: normal
-      mean: 0.05
-      std: 0.05
-    noise_density:
-      dist: normal
       mean: 0.0
-      std: 0.1
-  balise:
-    position_noise_m:
-      dist: normal
-      mean: 0.0
-      std: 0.3
-    detection_prob: 0.95
-  map:
-    ref_error_m:
-      dist: normal
-      mean: 0.0
-      std: 0.5
-fusion:
-  latency_ms: 100
-  timestamp_jitter_ms: 20
-  filter_proxy: ekf_simple
+      std: 0.02
+      rw_tau_s: 900
+    accel_noise_density_mps2_sqrtHz: 0.05
+    gyro_noise_density_dps_sqrtHz: 0.01
+  fusion:
+    latency_ms:
+      dist: trunc_normal
+      mean: 20.0
+      std: 5.0
+      lower: 10.0
+      upper: 35.0
+    timestamp_jitter_ms: 5.0
+    filter_proxy: ekf_simple
 
-# Notes:
-# - All parameter values are placeholders pending Phase 1 interview & file scan.
-# - Distributions: allowed keys (normal, uniform, lognormal, laplace, student_t, empirical).
-# - For lognormal: 'mean' and 'sigma' refer to underlying normal parameters.
+reporting:
+  metrics: [rmse_longitudinal, rmse_lateral, p50, p90, p95, p99]
+  export_formats: [csv]
+
+# Annahmen:
+# - Balise Fehlermodell aggregiert (Heavy-Tail Anteile multipath_tail_m / weather_uniform_m additiv).
+# - Odometrie Drift modelliert als Normal mit σ proportional zur Segmentdistanz (abgeleitet aus drift_per_km_m).
+# - Map Fehler: gewichtete Mischung Normal + TruncExp (Gewicht = weight); Skalierung nur aktiv ab definierter Distanz.
+# - GNSS Tunnel: vollständiger Ausfall (Outage=1); optional Hold-last-Valid bis 30 s.
+# - Korrelationsmatrix approximiert; Validierung mittels rho_tol.

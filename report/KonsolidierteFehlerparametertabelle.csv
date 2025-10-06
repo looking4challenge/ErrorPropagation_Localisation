@@ -1,0 +1,25 @@
+Kategorie,Fehlerquelle,Longitudinal,Lateral,Zeitverhalten,Modell,Parameter,Relevanz,Bemerkung
+Balisen,Latenz,v·t_latenz,—,Systematisch,N(10ms,2ms) trunc[6,14]ms,mu=10ms; sigma=2ms,HOCH,Geschwindigkeitsabhängig
+Balisen,Antennenoffset,N(0,sigma),N(0,sigma),Systematisch,Normal,sigma=0.02m,MITTEL,Montageungenauigkeit
+Balisen,EM-Störung,Rayleigh,Rayleigh,Zufällig,Rayleigh,sigma=0.012m,NIEDRIG,Umgebungsabhängig
+Balisen,Multipath,Exp trunc,—,Episodisch,Exp(lambda=0.05) cap 0.08m,w=0.15,MITTEL,Heavy-tail Komponente
+Balisen,Witterung,Uniform,Uniform,Zufällig,Uniform,+/-0.015m,NIEDRIG,Temperatur/Feuchte
+Balisen,Ausfall,—,—,Episodisch,Markov,p_miss≈1x10⁻⁴,MITTEL,Sicherheitsrelevant
+Odometrie,Quantisierung,Uniform,—,Deterministisch,Uniform,+/-6.7mm (Deltas/2),MITTEL,Encoder-Auflösung
+Odometrie,Drift,Normal,—,Systematisch,N(0,sigma_drift·d),sigma_drift=0.01m/km,MITTEL,Kalibrierungsfehler
+Odometrie,Umfang residual,Uniform,—,Systematisch,Uniform,+/-0.03m (+/-0.10m Stress),MITTEL,Nach Korrektur
+Digitale Karte,Geometrie basis,N(0,sigma),N(0,sigma),Systematisch,Normal,sigma_längs=0.019m; sigma_quer=0.014m,MITTEL,Vermessungsgenauigkeit
+Digitale Karte,Interpolation,Exp trunc,—,Systematisch,Exp(lambda=0.02) cap 0.05m,w=0.3,NIEDRIG,Zwischen Stützpunkten
+Digitale Karte,Skalierung,alpha·d,—,Systematisch,N(0,6x10⁻⁴)·d,nur für d>2km,NIEDRIG,Proportional
+GNSS,Bias (Open),N(0,sigma),N(0,sigma),Systematisch,Normal,sigma=0.25m,HOCH,Atmosphäre/Uhr
+GNSS,Noise (Open),N(0,sigma),N(0,sigma),Zufällig,Normal,sigma=0.30m,HOCH,Empfängerfehler
+GNSS,Bias (Urban),N(0,sigma),N(0,sigma),Systematisch,Normal,sigma=0.50m,HOCH,Multipath verstärkt
+GNSS,Noise (Urban),N(0,sigma),N(0,sigma),Zufällig,Normal,sigma=0.80m,HOCH,Signaldegradation
+GNSS,Multipath (Urban),Exp trunc,Exp trunc,Episodisch,Exp(lambda=2) cap 3m,w=0.1,MITTEL,Heavy-tail
+GNSS,Outage,—,—,Episodisch,Bernoulli,p_open=0.01; p_urban=0.05,HOCH,Verfügbarkeit
+IMU,Accel Bias,Integration,Integration,Systematisch,N(0,0.005m/s²) + RW,tau=900s,MITTEL,Temperaturabhängig
+IMU,Gyro Bias,Integration,Integration,Systematisch,N(0,0.02°/s) + RW,tau=900s,MITTEL,Langzeitdrift
+IMU,Accel Noise,Integration,Integration,Zufällig,Weißrauschen,0.05 m/s²/√Hz,NIEDRIG,Hochfrequent
+IMU,Gyro Noise,Integration,Integration,Zufällig,Weißrauschen,0.01 °/s/√Hz,NIEDRIG,Hochfrequent
+Fusion,Latenz,v·Deltat,—,Systematisch,N(20ms,5ms) trunc[10,35]ms,Gain-reduziert,MITTEL,Verarbeitungszeit
+Fusion,Jitter,—,—,Zufällig,In Latenz absorbiert,—,NIEDRIG,Zeitstempel
