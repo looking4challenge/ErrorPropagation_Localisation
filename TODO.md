@@ -28,12 +28,12 @@
 - [x] Metriken berechnen & speichern (JSON + CSV)
 - [x] Plots generieren (PDF/CDF/QQ + Komponenten PDFs)
 - [x] Zeitreihen / Modus-Vergleich (Grundgerüst + lateral/2D Metriken integriert)
-- [ ] Lateral/2D Erweiterung (Feinschliff)
+- [x] Lateral/2D Erweiterung (Feinschliff)
   - [x] Zeitreihen Grundgerüst (longitudinal, open mode)
   - [x] Modus-Vergleich (urban/tunnel) (statische Epochensamples)
   - [x] Lateral Fehlerpfad hinzugefügt (Balise/Map quer, vereinfachte Annahmen)
   - [x] Verbesserte 2D Fusion (separate Gewichtung longitudinal/lateral im Zeitmodell)
-  - [ ] Realistischere Lateral-Unsicherer Pfad (eigene GNSS Quer Noise/Bias Parametrisierung statt Kopie)
+  - [x] Realistischere Lateral-Unsicherer Pfad (eigene GNSS Quer Noise/Bias Parametrisierung implementiert)
 
 ## Phase 5 - Sensitivität & Validierung
 

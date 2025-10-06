@@ -12,6 +12,7 @@ from src.sim_sensors import (
     simulate_balise_errors,
     simulate_balise_errors_2d,
     simulate_gnss_bias_noise,
+    simulate_gnss_bias_noise_2d,
     simulate_map_error,
     simulate_map_error_2d,
     simulate_odometry_segment_error,
@@ -29,7 +30,13 @@ from src.plots import (
     COLORS,
 )
 from src.time_sim import simulate_time_series
-from src.sensitivity import oat_sensitivity, default_oat_params
+from src.sensitivity import (
+    oat_sensitivity,
+    default_oat_params,
+    lean_src_prcc_pipeline,
+    quantile_conditioning,
+    exceedance_sensitivity,
+)
 
 
 def main():
@@ -45,6 +52,12 @@ def main():
     ap.add_argument("--override-n", type=int, default=None, help="Override N_samples (dev/performance)")
     ap.add_argument("--oat", action="store_true", help="Run OAT sensitivity (longitudinal RMSE proxy)")
     ap.add_argument("--oat-params", nargs="*", default=None, help="Explicit dotted param paths for OAT (overrides default list)")
+    # Lean Erweiterung Flags
+    ap.add_argument("--src-prcc", action="store_true", help="Compute SRC & PRCC rankings (lean)")
+    ap.add_argument("--quantile-p", type=float, default=95.0, help="Quantile level for conditioning ΔQp (default 95)")
+    ap.add_argument("--quantile-conditioning", action="store_true", help="Enable quantile conditioning ΔQp sensitivity")
+    ap.add_argument("--exceedance-threshold", type=float, default=None, help="Threshold T for exceedance ΔP(|e|>T) (default: use p95 of fused if not set)")
+    ap.add_argument("--exceedance", action="store_true", help="Enable exceedance sensitivity ΔP(|e|>T)")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -61,7 +74,8 @@ def main():
     map_long, map_lat = simulate_map_error_2d(cfg, n, rng)
     odo = simulate_odometry_segment_error(cfg, n, rng)
     imu = simulate_imu_bias_position_error(cfg, n, rng)
-    gnss_open = simulate_gnss_bias_noise(cfg, n, rng, mode="open")
+    # Separate longitudinal & lateral GNSS errors (open mode) for realistic lateral unsafe path
+    gnss_open_long, gnss_open_lat = simulate_gnss_bias_noise_2d(cfg, n, rng, mode="open")
     # Mode comparison (open/urban/tunnel) longitudinal only for now
     gnss_modes_samples = {}
     for mode_name in ["open", "urban", "tunnel"]:
@@ -73,7 +87,7 @@ def main():
     # Variance estimates (sample) for weighting
     var_secure = np.var(secure, ddof=1)
     # Unsichere Pfad: gnss + imu
-    unsafe = gnss_open + imu
+    unsafe = gnss_open_long + imu
     var_unsafe = np.var(unsafe, ddof=1)
 
     fused, var_fused = fuse_pair(secure, np.full(n, var_secure), unsafe, np.full(n, var_unsafe))
@@ -82,17 +96,25 @@ def main():
     metrics_map = summarize(map_err)
     metrics_odo = summarize(odo)
     metrics_imu = summarize(imu)
-    metrics_gnss = summarize(gnss_open)
+    metrics_gnss = summarize(gnss_open_long)
     metrics_secure = summarize(secure)
     metrics_unsafe = summarize(unsafe)
     metrics_fused = summarize(fused)
 
-    # Lateral & 2D metrics (combine map + balise laterals; odometry/imu lateral neglected placeholder)
-    lateral_secure = bal_lat + map_lat  # odometry lateral drift ~ negligible (assumption logged)
-    # Assume unsafe path lateral dominated by GNSS (bias/noise) — reuse gnss_open as lateral proxy (first-order)
-    lateral_unsafe = gnss_open  # simplification
-    # 2D combine
-    fused_2d = combine_2d(fused, (lateral_secure + lateral_unsafe) / 2.0)  # crude merge placeholder
+    # Lateral & 2D metrics (refined):
+    # Secure lateral path: balise_lat + map_lat (odometry lateral drift negligible; documented)
+    lateral_secure = bal_lat + map_lat
+    # Unsafe lateral path: GNSS lateral (imu lateral neglected)
+    lateral_unsafe = gnss_open_lat
+    # Fuse lateral separately via variance inverse weighting
+    var_secure_lat = np.var(lateral_secure, ddof=1)
+    var_unsafe_lat = np.var(lateral_unsafe, ddof=1)
+    fused_lat, var_fused_lat = fuse_pair(lateral_secure, np.full(n, var_secure_lat), lateral_unsafe, np.full(n, var_unsafe_lat))
+    # 2D radial error based on fused longitudinal & fused lateral
+    fused_2d = combine_2d(fused, fused_lat)
+    # Add lateral & 2D metrics
+    metrics_fused["rmse_lateral"] = float(np.sqrt(np.mean(fused_lat**2)))
+    metrics_fused["p95_lateral"] = float(np.percentile(fused_lat, 95))
     metrics_fused["rmse_2d"] = float(np.sqrt(np.mean(fused_2d**2)))
     metrics_fused["p95_2d"] = float(np.percentile(fused_2d, 95))
 
@@ -137,10 +159,14 @@ def main():
             "map": map_err,
             "odometry": odo,
             "imu": imu,
-            "gnss_open": gnss_open,
+            "gnss_open": gnss_open_long,
             "secure": secure,
             "unsafe": unsafe,
             "fused": fused,
+            "lateral_secure": lateral_secure,
+            "lateral_unsafe": lateral_unsafe,
+            "fused_lat": fused_lat,
+            "fused_2d": fused_2d,
         })
         df_samples.to_csv(out_dir / "samples.csv", index=False)
 
@@ -261,9 +287,35 @@ def main():
             plt.title(f"OAT Sensitivität (±{delta_pct:.1f}% Perturbation)")
             plt.tight_layout(); plt.savefig(Path(args.figdir)/"oat_bar.png", dpi=150); plt.close()
 
+    # Lean Erweiterung: SRC + PRCC + Quantil & Exceedance Analysen
+    if args.src_prcc or args.quantile_conditioning or args.exceedance:
+        # Komponenten-Samples zusammenstellen (Basis gleiche wie secure/unsafe decomposition)
+        component_map = {
+            "balise": bal,
+            "map": map_err,
+            "odometry": odo,
+            "imu": imu,
+            "gnss_open": gnss_open_long,
+        }
+        if args.src_prcc:
+            pipe_res = lean_src_prcc_pipeline(component_map, fused, fused_lat, fused_2d)
+            # Write each list to CSV
+            for key, rows in pipe_res.items():
+                pd.DataFrame(rows).to_csv(out_dir / f"sensitivity_{key}.csv", index=False)
+        if args.quantile_conditioning:
+            qres = quantile_conditioning(fused, component_map, p=args.quantile_p)
+            pd.DataFrame(qres).to_csv(out_dir / f"sensitivity_quantile_p{int(args.quantile_p)}.csv", index=False)
+        if args.exceedance:
+            thr = args.exceedance_threshold
+            if thr is None:
+                thr = float(np.percentile(np.abs(fused), 95))  # fallback p95 fused
+            eres = exceedance_sensitivity(fused, component_map, threshold=thr)
+            pd.DataFrame(eres).to_csv(out_dir / f"sensitivity_exceedance_T{thr:.3f}.csv", index=False)
+
     print(
     f"Saved metrics (JSON + CSV) to {out_dir}. Plots={'on' if not args.no_plots else 'off'} (minimal={args.minimal_plots}). "
-    f"Raw samples={'saved' if args.save_samples else 'skipped'}. Time-series={'on' if args.time_series else 'off'}. OAT={'on' if args.oat else 'off'}."
+    f"Raw samples={'saved' if args.save_samples else 'skipped'}. Time-series={'on' if args.time_series else 'off'}. "
+    f"OAT={'on' if args.oat else 'off'}. SRC/PRCC={'on' if args.src_prcc else 'off'}. Quantile={'on' if args.quantile_conditioning else 'off'}. Exceedance={'on' if args.exceedance else 'off'}."
     )
 
 
