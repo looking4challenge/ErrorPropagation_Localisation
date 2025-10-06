@@ -1,4 +1,1 @@
-
-
-
-
+Residualumfang 1cm.  Ergänze report\system_uebersicht_draft.md um funktionale beschreibungen von einzelnen Informationsverarbeitungspfaden(Balisen, Karte, Odometrie), zugehörigen Fehlerquellen(mit mathematischen Modellen) die berücksichtigt werden.  Ziel: aus diesen Informationen einen übersichtlichen, leicht verständlichen Vorab-Bericht für Stakeholder(technisch versiert aber ohne tiefgehende statistische Kenntnisse) zu erstellen.  
