@@ -133,3 +133,9 @@ Für dynamische Sobol oder Shapley: Trainiere z. B. RandomForest/GBM → Ziehe S
 Wenn du möchtest, kann ich direkt die Implementations-Skelette für SRC/PRCC + Quantil/Exceedance in `sensitivity.py` ergänzen – sag einfach kurz Bescheid.
 
 Möchtest du zuerst (a) schnelle Low-Cost Erweiterungen (SRC/PRCC/Quantil/Exceedance) oder (b) gleich Sobol integrieren?
+
+
+
+Sobol (nächster Schritt aus Pipeline) angebunden werden soll.
+ES95 Sensitivität ergänzt werden soll.
+Ein konsolidierter Sensitivitätsbericht (Markdown) generiert werden soll.

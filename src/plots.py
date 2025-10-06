@@ -65,6 +65,7 @@ def plot_pdf(
     plt.title(title)
     plt.xlabel(x_label)
     plt.ylabel(y_label)
+    plt.grid(alpha=0.25, linestyle=":")
     plt.legend()
     plt.tight_layout()
     plt.savefig(out, dpi=150)
@@ -88,6 +89,7 @@ def plot_cdf(
     plt.title(title)
     plt.xlabel(x_label)
     plt.ylabel(y_label)
+    plt.grid(alpha=0.25, linestyle=":")
     plt.tight_layout()
     plt.savefig(out, dpi=150)
     plt.close()
@@ -107,7 +109,7 @@ def plot_qq(
     # probplot erzeugt Achsen ohne Einheiten → nachträglich setzen
     plt.xlabel(f"Theoretische Quantile {axis_label}")
     plt.ylabel(f"Empirische Quantile {axis_label}")
-    # Hilfslinien
+    # Hilfslinien & Grid (konform mit anderen Plots)
     plt.axline((0, 0), slope=1, color="#444", linewidth=0.8, linestyle=":")
     plt.grid(alpha=0.25, linestyle=":")
     plt.tight_layout()

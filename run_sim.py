@@ -302,15 +302,75 @@ def main():
             # Write each list to CSV
             for key, rows in pipe_res.items():
                 pd.DataFrame(rows).to_csv(out_dir / f"sensitivity_{key}.csv", index=False)
+            if not args.no_plots and 'src_rmse_long_proxy' in pipe_res and 'prcc_rmse_long_proxy' in pipe_res:
+                import matplotlib.pyplot as plt
+                # Extract top n (all) for rmse_long_proxy
+                src_rows = pipe_res['src_rmse_long_proxy']
+                prcc_rows = pipe_res['prcc_rmse_long_proxy']
+                # Align ordering by abs_src
+                order = [r['param'] for r in src_rows]
+                src_vals = [r['src'] for r in src_rows]
+                prcc_map = {r['param']: r['prcc'] for r in prcc_rows}
+                prcc_vals = [prcc_map[p] for p in order]
+                y = np.arange(len(order))
+                plt.figure(figsize=(7, max(2.5, 0.45 * len(order))))
+                plt.barh(y + 0.2, src_vals, height=0.4, label='SRC (RMSE_long)', color='#4c72b0')
+                plt.barh(y - 0.2, prcc_vals, height=0.4, label='PRCC (RMSE_long)', color='#dd8452')
+                plt.yticks(y, order)
+                plt.axvline(0, color='#444', linewidth=0.8)
+                plt.xlabel('Koeffizient [-]')
+                plt.title('Sensitivität SRC vs. PRCC – RMSE_long')
+                plt.legend()
+                plt.grid(alpha=0.25, linestyle=':')
+                plt.tight_layout(); plt.savefig(Path(args.figdir)/'sensitivity_src_prcc_rmse_long.png', dpi=150); plt.close()
+                # Scatter Vergleich
+                plt.figure(figsize=(4.2,4))
+                plt.scatter(src_vals, prcc_vals, c=np.arange(len(order)), cmap='viridis', s=60, edgecolors='k')
+                for i,p in enumerate(order):
+                    plt.text(src_vals[i], prcc_vals[i], p, fontsize=8, ha='left', va='bottom')
+                plt.xlabel('SRC')
+                plt.ylabel('PRCC')
+                lim = max(1.0, max(max(map(abs, src_vals)), max(map(abs, prcc_vals))) * 1.05)
+                plt.xlim(-lim, lim); plt.ylim(-lim, lim)
+                plt.axhline(0, color='#666', linewidth=0.7, linestyle=':')
+                plt.axvline(0, color='#666', linewidth=0.7, linestyle=':')
+                plt.title('SRC vs. PRCC Streudiagramm')
+                plt.grid(alpha=0.25, linestyle=':')
+                plt.tight_layout(); plt.savefig(Path(args.figdir)/'sensitivity_src_vs_prcc_scatter.png', dpi=150); plt.close()
         if args.quantile_conditioning:
             qres = quantile_conditioning(fused, component_map, p=args.quantile_p)
             pd.DataFrame(qres).to_csv(out_dir / f"sensitivity_quantile_p{int(args.quantile_p)}.csv", index=False)
+            if not args.no_plots and qres:
+                import matplotlib.pyplot as plt
+                ordered = sorted(qres, key=lambda r: abs(r.get(f'delta_q{int(args.quantile_p)}', 0.0)), reverse=True)
+                params = [r['param'] for r in ordered]
+                deltas = [r[f'delta_q{int(args.quantile_p)}'] for r in ordered]
+                y = np.arange(len(params))
+                plt.figure(figsize=(6.5, max(2.5, 0.45 * len(params))))
+                plt.barh(y, deltas, color='#6a3d9a')
+                plt.yticks(y, params)
+                plt.xlabel(f"ΔQ{int(args.quantile_p)} [m]")
+                plt.title(f"Quantil-Sensitivität ΔQ{int(args.quantile_p)} (High−Low)")
+                plt.grid(alpha=0.25, linestyle=':')
+                plt.tight_layout(); plt.savefig(Path(args.figdir)/f'sensitivity_delta_q{int(args.quantile_p)}.png', dpi=150); plt.close()
         if args.exceedance:
             thr = args.exceedance_threshold
             if thr is None:
                 thr = float(np.percentile(np.abs(fused), 95))  # fallback p95 fused
             eres = exceedance_sensitivity(fused, component_map, threshold=thr)
             pd.DataFrame(eres).to_csv(out_dir / f"sensitivity_exceedance_T{thr:.3f}.csv", index=False)
+            if not args.no_plots and eres:
+                import matplotlib.pyplot as plt
+                params = [r['param'] for r in eres]
+                deltas = [r['delta_p_pct_points'] for r in eres]
+                y = np.arange(len(params))
+                plt.figure(figsize=(6.5, max(2.5, 0.45 * len(params))))
+                plt.barh(y, deltas, color='#e31a1c')
+                plt.yticks(y, params)
+                plt.xlabel('ΔP(|e|>T) [%-Pkt]')
+                plt.title(f'Exceedance Sensitivität ΔP(|e|>{thr:.3f} m)')
+                plt.grid(alpha=0.25, linestyle=':')
+                plt.tight_layout(); plt.savefig(Path(args.figdir)/f'sensitivity_exceedance_T{thr:.3f}_bar.png', dpi=150); plt.close()
 
     print(
     f"Saved metrics (JSON + CSV) to {out_dir}. Plots={'on' if not args.no_plots else 'off'} (minimal={args.minimal_plots}). "
