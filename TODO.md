@@ -37,7 +37,8 @@
 
 ## Phase 5 - Sensitivität & Validierung
 
-- [ ] OAT Sensitivität
+- [x] OAT Sensitivität (Baseline Ranking, longitudinal RMSE)
+- [ ] OAT Erweiterung lateral/2D (optional)
 - [ ] Sobol optional
 - [ ] Validierung gegen Daten (falls vorhanden)
   - [ ] Quer/Längs Residuen getrennt (falls Daten 2D enthalten)

@@ -29,6 +29,7 @@ from src.plots import (
     COLORS,
 )
 from src.time_sim import simulate_time_series
+from src.sensitivity import oat_sensitivity, default_oat_params
 
 
 def main():
@@ -42,6 +43,8 @@ def main():
     ap.add_argument("--time-series", action="store_true", help="Run time-series simulation (RMSE(t), P95(t), Var paths)")
     ap.add_argument("--oos-threshold", type=float, default=0.2, help="Out-of-spec threshold for share_oos metric (m)")
     ap.add_argument("--override-n", type=int, default=None, help="Override N_samples (dev/performance)")
+    ap.add_argument("--oat", action="store_true", help="Run OAT sensitivity (longitudinal RMSE proxy)")
+    ap.add_argument("--oat-params", nargs="*", default=None, help="Explicit dotted param paths for OAT (overrides default list)")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -228,10 +231,39 @@ def main():
             plt.xlabel("Zeit t [s]"); plt.ylabel("Anteil [-]")
             plt.title("Out-of-Spec Anteil (|Fehler| > Schwelle)")
             plt.legend(); plt.tight_layout(); plt.savefig(fig_dir/"share_out_of_spec.png", dpi=150); plt.close()
+            if ts_res.rmse_lat is not None:
+                plt.figure(figsize=(6,3))
+                plt.plot(ts_res.times, ts_res.rmse_lat, label="RMSE_lat [m]")
+                if ts_res.rmse_2d is not None:
+                    plt.plot(ts_res.times, ts_res.rmse_2d, label="RMSE_2D [m]")
+                plt.xlabel("Zeit t [s]"); plt.ylabel("Fehler [m]")
+                plt.title("Zeitverlauf Lateral & 2D RMSE")
+                plt.legend(); plt.tight_layout(); plt.savefig(fig_dir/"fused_time_lat_2d.png", dpi=150); plt.close()
+
+    # OAT Sensitivity
+    if args.oat:
+        param_list = args.oat_params if args.oat_params else default_oat_params(cfg)
+        delta_pct = float(cfg.sim.get("delta_pct", 10))
+        oat_rng = np.random.default_rng(get_seed(cfg) + 999)
+        oat_results = oat_sensitivity(cfg, param_list, delta_pct, min(3000, n), oat_rng)
+        df_oat = pd.DataFrame(oat_results)
+        df_oat.to_csv(out_dir / "sensitivity_oat.csv", index=False)
+        if not args.no_plots:
+            # Horizontal bar plot of abs_effect_pct
+            import matplotlib.pyplot as plt
+            plt.figure(figsize=(7, max(2, 0.4 * len(oat_results))))
+            ylabels = [str(r['param']) for r in oat_results]
+            effects = [float(r['abs_effect_pct']) for r in oat_results]
+            y_pos = np.arange(len(oat_results))
+            plt.barh(y_pos, effects, color="#4c72b0")
+            plt.yticks(y_pos, ylabels)
+            plt.xlabel("|ΔRMSE| max(±) [%]")
+            plt.title(f"OAT Sensitivität (±{delta_pct:.1f}% Perturbation)")
+            plt.tight_layout(); plt.savefig(Path(args.figdir)/"oat_bar.png", dpi=150); plt.close()
 
     print(
-        f"Saved metrics (JSON + CSV) to {out_dir}. Plots={'on' if not args.no_plots else 'off'} (minimal={args.minimal_plots}). "
-        f"Raw samples={'saved' if args.save_samples else 'skipped'}. Time-series={'on' if args.time_series else 'off'}."
+    f"Saved metrics (JSON + CSV) to {out_dir}. Plots={'on' if not args.no_plots else 'off'} (minimal={args.minimal_plots}). "
+    f"Raw samples={'saved' if args.save_samples else 'skipped'}. Time-series={'on' if args.time_series else 'off'}. OAT={'on' if args.oat else 'off'}."
     )
 
 

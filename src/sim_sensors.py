@@ -44,8 +44,13 @@ def simulate_balise_errors_2d(cfg: Config, n: int, rng: np.random.Generator) -> 
 
 def simulate_gnss_bias_noise(cfg: Config, n: int, rng: np.random.Generator, mode: str) -> np.ndarray:
     gnss_mode = cfg.sensors["gnss"]["modes"][mode]
-    bias = registry.sample(gnss_mode["bias"], n, rng)
-    noise = registry.sample(gnss_mode["noise"], n, rng)
+    # Tunnel-Modus kann vollständigen Ausfall haben -> fallback Nullfehler (Hold-Last wird upstream modelliert)
+    if "bias" in gnss_mode and "noise" in gnss_mode:
+        bias = registry.sample(gnss_mode["bias"], n, rng)
+        noise = registry.sample(gnss_mode["noise"], n, rng)
+    else:
+        bias = np.zeros(n)
+        noise = np.zeros(n)
     tail = 0.0
     if "multipath_tail" in gnss_mode:
         tail_spec = gnss_mode["multipath_tail"]
@@ -61,10 +66,14 @@ def simulate_gnss_bias_noise_2d(cfg: Config, n: int, rng: np.random.Generator, m
     """
     gnss_mode = cfg.sensors["gnss"]["modes"][mode]
     long = simulate_gnss_bias_noise(cfg, n, rng, mode)
-    bias_lat_spec = gnss_mode.get("bias_lat", gnss_mode["bias"])
-    noise_lat_spec = gnss_mode.get("noise_lat", gnss_mode["noise"])
-    bias_lat = registry.sample(bias_lat_spec, n, rng)
-    noise_lat = registry.sample(noise_lat_spec, n, rng)
+    bias_lat_spec = gnss_mode.get("bias_lat", gnss_mode.get("bias"))
+    noise_lat_spec = gnss_mode.get("noise_lat", gnss_mode.get("noise"))
+    if bias_lat_spec and noise_lat_spec:
+        bias_lat = registry.sample(bias_lat_spec, n, rng)
+        noise_lat = registry.sample(noise_lat_spec, n, rng)
+    else:
+        bias_lat = np.zeros(n)
+        noise_lat = np.zeros(n)
     tail_lat = 0.0  # Lateral multipath tail not yet parameterised
     return long, bias_lat + noise_lat + tail_lat
 
