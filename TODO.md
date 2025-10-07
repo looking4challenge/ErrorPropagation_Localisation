@@ -39,9 +39,13 @@
 
 - [x] OAT Sensitivität (Baseline Ranking, longitudinal RMSE)
 - [ ] OAT Erweiterung lateral/2D (optional)
-- [ ] Sobol optional
+- [x] Sobol (Longitudinal RMSE – Jansen Fallback, Basisgröße klein)
+- [x] ES95 (Expected Shortfall 95%) Conditioning
 - [ ] Validierung gegen Daten (falls vorhanden)
   - [ ] Quer/Längs Residuen getrennt (falls Daten 2D enthalten)
+- [x] Konsolidierter Sensitivitätsbericht (inkl. Sobol & ΔES95)
+  - [ ] Sobol Verfeinerung (N_base erhöhen)
+  - [ ] Erweiterung auf rmse_2d / p95_2d
 
 ## Phase 6 - Bericht
 

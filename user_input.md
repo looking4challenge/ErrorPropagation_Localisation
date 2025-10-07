@@ -128,14 +128,14 @@ Aktuell vorhanden: OAT (±Δ%) auf longitudinalem RMSE. Damit bekommst du lokale
 ## Surrogate Option (falls Performance kritisch)
 Für dynamische Sobol oder Shapley: Trainiere z. B. RandomForest/GBM → Ziehe Sensitivitäten via Permutation Importance + SHAP. Dokumentiere Modell-Fit (R², RMSE surrogate vs. true).
 
----
 
-Wenn du möchtest, kann ich direkt die Implementations-Skelette für SRC/PRCC + Quantil/Exceedance in `sensitivity.py` ergänzen – sag einfach kurz Bescheid.
+(Kurz) Konsolidierter Sensitivitätsbericht generieren (Markdown + Tabelle: Param, S1, ST, SRC, PRCC, ΔQ95, ΔES95, ΔP(|e|>T)).
+(Kurz) CLI-Flag --es-p + Export P99 / ES99.
+(Mittel) Gruppen-Sobol (Mapping Param → Gruppe) + Ranking.
+(Mittel) Bootstrap-CIs für SRC/PRCC und ΔQ95 / ΔES95 (Konfidenzkommunikation SIL1).
 
-Möchtest du zuerst (a) schnelle Low-Cost Erweiterungen (SRC/PRCC/Quantil/Exceedance) oder (b) gleich Sobol integrieren?
+Clamping/Normalisierung (z. B. ST>1 → 1.0) für veröffentlichte Tabelle gewünscht.
+Erweiterung auf 2D (rmse_2d, p95_2d) jetzt priorisiert werden soll.
+Automatisierte Aggregation mehrerer GNSS Parameter (Bias/Noise long/lat) in gruppierte Sobol-Indizes nötig ist.
+Nächster sinnvoller Schritt (wenn du willst): Sobol N_base hochsetzen (z. B. 128 oder 256) und zweite Version speichern, danach 2D-Sensitivität ausrollen. Kurzes Go genügt.
 
-
-
-Sobol (nächster Schritt aus Pipeline) angebunden werden soll.
-ES95 Sensitivität ergänzt werden soll.
-Ein konsolidierter Sensitivitätsbericht (Markdown) generiert werden soll.

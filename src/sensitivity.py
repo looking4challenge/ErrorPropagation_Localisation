@@ -365,17 +365,89 @@ def sobol_sensitivity(cfg: Config, param_paths: Sequence[str], n_base: int, mc_n
     metrics: subset of {"rmse_long", "rmse_2d", "p95_long"}.
     Returns dict mapping metric name -> DataFrame-like dict with columns: param, S1, S1_conf, ST, ST_conf.
     """
+    sample_fn = None  # type: ignore
+    sobol_analyze_mod = None  # type: ignore
     try:
         # Prefer new sobol sampler (deprecates saltelli in SALib >=1.5)
         try:  # nested to allow fallback
             from SALib.sample import sobol as _sobol_sampler_mod  # type: ignore
             sample_fn = _sobol_sampler_mod.sample  # module has sample()
-        except Exception:
+        except Exception:  # pragma: no cover
             from SALib.sample import saltelli  # type: ignore
             sample_fn = lambda problem, n_base, calc_second_order=False: saltelli.sample(problem, n_base, calc_second_order=calc_second_order)
-        from SALib.analyze import sobol  # analysis interface unchanged
-    except Exception as e:  # pragma: no cover - SALib import failure path
-        raise RuntimeError("SALib not available for Sobol analysis") from e
+        from SALib.analyze import sobol as sobol_analyze_mod  # type: ignore
+        salib_available = True
+    except Exception:  # pragma: no cover - SALib import failure path
+        salib_available = False
+
+    def _manual_jansen(problem: Dict[str, Any], samples: np.ndarray, Y: np.ndarray, B_boot: int = 200) -> List[Dict[str, float]]:
+        """Manual Sobol (first-order & total) using Jansen estimator.
+
+        Supports Saltelli/Sobol sampling layouts produced by SALib (optimized (k+2)N or legacy (2k+2)N).
+        Confidence values are bootstrap standard deviations (not CI half-widths) for transparency.
+        """
+        k = problem['num_vars']
+        N = n_base
+        rows_expected_opt = N * (k + 2)
+        rows_expected_legacy = N * (2 * k + 2)
+        n_rows = samples.shape[0]
+        if n_rows not in (rows_expected_opt, rows_expected_legacy):
+            raise RuntimeError(f"Unexpected Sobol sample shape {n_rows}; expected {rows_expected_opt} or {rows_expected_legacy}")
+        # Layout assumption (see SALib docs): rows[0:N]=A, rows[N:2N]=B, rows[(2+j)N:(3+j)N]=A_Bj
+        A = Y[0:N]
+        B = Y[N:2*N]
+        AB_blocks = []
+        for j in range(k):
+            start = (2 + j) * N
+            stop = (3 + j) * N
+            AB_blocks.append(Y[start:stop])
+        AB = np.column_stack(AB_blocks)  # shape N x k
+        # Variance base (A & B combined)
+        var_Y = np.var(np.concatenate([A, B]), ddof=1)
+        if var_Y == 0:
+            var_Y = 1e-12
+        # Jansen estimators
+        S1 = []
+        ST = []
+        for j in range(k):
+            diff_first = B - AB[:, j]
+            diff_total = A - AB[:, j]
+            S1_j = 1.0 - (np.mean(diff_first ** 2) / (2.0 * var_Y))
+            ST_j = (np.mean(diff_total ** 2) / (2.0 * var_Y))
+            S1.append(S1_j)
+            ST.append(ST_j)
+        # Bootstrap standard deviations
+        boot_S1 = np.zeros(k)
+        boot_ST = np.zeros(k)
+        if B_boot > 0:
+            idx = np.arange(N)
+            for _ in range(B_boot):
+                b = rng.integers(0, N, size=N)
+                Ab = A[b]; Bb = B[b]; ABb = AB[b, :]
+                var_b = np.var(np.concatenate([Ab, Bb]), ddof=1)
+                if var_b == 0:
+                    var_b = 1e-12
+                for j in range(k):
+                    diff_f = Bb - ABb[:, j]
+                    diff_t = Ab - ABb[:, j]
+                    s1b = 1.0 - (np.mean(diff_f ** 2) / (2.0 * var_b))
+                    stb = (np.mean(diff_t ** 2) / (2.0 * var_b))
+                    boot_S1[j] += (s1b - S1[j]) ** 2
+                    boot_ST[j] += (stb - ST[j]) ** 2
+            boot_S1 = np.sqrt(boot_S1 / B_boot)
+            boot_ST = np.sqrt(boot_ST / B_boot)
+        rows = []
+        for name, s1, st, s1_sd, st_sd in zip(problem['names'], S1, ST, boot_S1, boot_ST):
+            rows.append({
+                'param': name,
+                'S1': float(s1),
+                'S1_conf': float(s1_sd),  # std dev proxy
+                'ST': float(st),
+                'ST_conf': float(st_sd),
+                'estimator': 'jansen_fallback',
+            })
+        rows.sort(key=lambda r: (float('nan') if math.isnan(r['ST']) else -r['ST']))
+        return rows
     if metrics is None:
         metrics = ["rmse_long", "rmse_2d", "p95_long"]
     # Build problem definition
@@ -401,7 +473,10 @@ def sobol_sensitivity(cfg: Config, param_paths: Sequence[str], n_base: int, mc_n
         'bounds': bounds,
     }
     # Generate samples
-    sobol_samples = sample_fn(problem, n_base, calc_second_order=False)
+    if salib_available and sample_fn is not None:
+        sobol_samples = sample_fn(problem, n_base, calc_second_order=False)
+    else:
+        raise RuntimeError("Sobol sampling unavailable (SALib not installed)")
     k = problem['num_vars']
     n_eval = sobol_samples.shape[0]
     # Storage for metric values
@@ -422,25 +497,38 @@ def sobol_sensitivity(cfg: Config, param_paths: Sequence[str], n_base: int, mc_n
     # Restore original parameters
     for p, v in zip(param_paths, base_vals):
         _set_param(cfg, p, v)
-    # Analyze
+    # Analyze (with fallback if SALib analyze fails due to NumPy 2.0 ptp removal or other incompat)
     results: Dict[str, Any] = {}
     for mname, vals in metric_vals.items():
         Y = np.array(vals, dtype=float)
         if Y.ndim != 1 or Y.size != n_eval:
             raise RuntimeError(f"Unexpected shape for metric {mname} values")
-        S = sobol.analyze(problem, Y, calc_second_order=False, print_to_console=False)
-        rows = []
-        for p, s1, s1c, st, stc in zip(param_paths, S['S1'], S['S1_conf'], S['ST'], S['ST_conf']):
-            rows.append({
-                'param': p,
-                'S1': float(s1),
-                'S1_conf': float(s1c),
-                'ST': float(st),
-                'ST_conf': float(stc),
-            })
-        # Sort by total order
-        rows.sort(key=lambda r: (float('nan') if math.isnan(r['ST']) else -r['ST']))
-        results[mname] = rows
+        use_fallback = False
+        if not salib_available:
+            use_fallback = True
+        else:
+            try:  # attempt SALib standard analysis
+                S = sobol_analyze_mod.analyze(problem, Y, calc_second_order=False, print_to_console=False)
+                rows = []
+                for p, s1, s1c, st, stc in zip(param_paths, S['S1'], S['S1_conf'], S['ST'], S['ST_conf']):
+                    rows.append({
+                        'param': p,
+                        'S1': float(s1),
+                        'S1_conf': float(s1c),
+                        'ST': float(st),
+                        'ST_conf': float(stc),
+                        'estimator': 'salib',
+                    })
+                rows.sort(key=lambda r: (float('nan') if math.isnan(r['ST']) else -r['ST']))
+                results[mname] = rows
+            except AttributeError as e:
+                # NumPy 2.0 removed ndarray.ptp; SALib 1.4.x still uses method -> fallback
+                use_fallback = True
+            except Exception:
+                use_fallback = True
+        if use_fallback:
+            rows_fb = _manual_jansen(problem, sobol_samples, Y)
+            results[mname] = rows_fb
     return results
 
 

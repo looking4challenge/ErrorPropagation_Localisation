@@ -15,6 +15,6 @@
     "rmse_ci95_lower": 0.3915669876951237,
     "rmse_ci95_upper": 0.40278027096650454
   },
-  "timestamp_utc": "2025-10-06T22:18:57.785095+00:00",
+  "timestamp_utc": "2025-10-06T22:50:50.185318+00:00",
   "config": "C:\\Repos\\ErrorPropagation_Localisation\\config\\model.yml"
 }
