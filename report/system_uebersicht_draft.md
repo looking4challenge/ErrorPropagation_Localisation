@@ -330,6 +330,97 @@ Annahmen & Begründungen Intervall:
 
 Obwohl einige Fehlerquellen nicht strikt additiv sind (z.B. Kopplungen, nichtlineare Filter), liefert die additive Näherung konservative Schätzungen für Streuung und Perzentile bei homogenen Betriebsbedingungen (<60 km/h) und moderaten Latenzen. Detailliertere Kopplung (z.B. Kovarianzmatrix, Copula) wird intern in der Monte-Carlo Pipeline berücksichtigt, ist für das grundsätzliche Verständnis aber nicht erforderlich.
 
+### 5.6 Adaptive (potenziell asymmetrische) sichere Intervallbestimmung & zustandsvolle 4‑Regeln-Fusion (Phase‑4 Update)
+
+Status: Implementiert (longitudinal adaptiv aktiv), Asymmetrie vorbereitet, lateral stateful noch offen.
+
+#### 5.6.1 Motivation
+
+Die ursprüngliche symmetrische Halbbreite ±P99_additiv ist konservativ aber unabhängig von Geschwindigkeitszustand. Da Anteile (v·t_latenz, Odo Drift-Wachstum) geschwindigkeitsabhängig variieren, erlaubt adaptive Binning eine lokale Verengung ohne Verlust der konservativen Sicherheitsreserve.
+
+#### 5.6.2 Verfahren (aktuelle Implementierung)
+
+Alle `Δt_update = 1.0 s` (Konfig `fusion.interval.update_cadence_s`) werden Intervallgrenzen neu bestimmt:
+
+1. Speed-Binning mit Breite `speed_bin_width` (Default 5.0 m/s).
+2. Mindestbin-Größe: `min_bin_fraction · N` (Default 5%).
+3. Quantile je Bin: `Q_low = Q_{q_low_pct}` (1%), `Q_high = Q_{q_high_pct}` (99%).
+4. Fallback: Unterbesetzte Bins nutzen global symmetrische Grenze ±Q_{99}(|e_secure|).
+5. Midpoint: `mid = 0.5·(lower+upper)` (bei zukünftiger Asymmetrie verschoben).
+
+Formeln:
+
+```text
+lower_i = Q_{q_low}( e_secure | i∈B )
+upper_i = Q_{q_high}( e_secure | i∈B )
+```
+
+Asymmetrie (Decision A) wird durch unabhängige Schätzung von lower/upper unterstützt (kein Erzwingen von Symmetrie).
+
+#### 5.6.3 Zustandsvolle Regel-Fusion (RuleFusionState)
+
+Modi pro Sample i:
+
+- `midpoint`: GNSS/IMU Outage → Ausgabe mid_i.
+- `unsafe`: unsicherer Pfad innerhalb [lower_i, upper_i] → direkte Nutzung.
+- `unsafe_clamped`: unsicherer Pfad außerhalb → Clamping (Sicherheitsgarantie).
+
+Transitions werden linear über `blend_steps` (Default 5) geglättet (Decision C). Exponentielle Alternative dokumentiert, nicht aktiviert.
+
+#### 5.6.4 Qualitätsheuristik (Decision B)
+
+Nutzung unsicherer Pfad nur falls (available ∧ |raw|≤upper). Keine zusätzlichen RAIM/DOP Inputs → dokumentierte Vereinfachung SIL1-konservativ (verhindert Intervallvergrößerung durch Ausreißer).
+
+#### 5.6.5 Additive vs. Joint P99 Bias
+
+Metriken: `P99_additiv = Σ P99(|Komponent_k|)` vs. `P99_joint = P99(|Σ Komponent_k|)`.  
+Bias_% = 100·(P99_additiv / P99_joint − 1). Tests belegen stabil positiven Bias (≥~2% mittlerer Relativwert) → explizite Sicherheitsreserve. Export: `secure_interval_metrics.csv`, Zeitreihe `secure_interval_growth.csv`.
+
+#### 5.6.6 Neue Artefakte / Plots
+
+| Datei | Inhalt |
+|-------|--------|
+| fusion_mode_stats.csv | Zeitanteile midpoint / unsafe / unsafe_clamped |
+| fusion_switch_rate.csv | Switch Rate pro Schritt |
+| secure_interval_bounds.csv | Snapshot lower / upper Arrays (Audit, Asymmetrie) |
+| secure_interval_growth.csv | Additiv vs. joint P99 + Bias Verlauf |
+| fusion_mode_share.png | Gestapelte Anteilskurve Modi |
+| fused_time_interval_bounds.png | Snapshot der Intervallgrenzen (sortierte Samples) |
+
+#### 5.6.7 CLI Erweiterungen
+
+| Flag | Zweck |
+|------|------|
+| --interval-update-cadence-s | Aktualisierungsfrequenz adaptive Intervalle |
+| --no-adaptive-interval | Deaktiviert adaptive Quantile (Fallback global) |
+| --fusion-stats | Export Mode Shares & Switch Rate |
+| --export-interval-bounds | Persistiert aktuelle lower/upper |
+| --fusion-mode | Umschalten (rule_based\|var_weight) |
+
+#### 5.6.8 Offene Punkte
+
+- Lateral stateful Fusion analog longitudinal.
+- Logging Fallback-Rate (Bins < min_bin_fraction) & Warnschwelle (>20%).
+- Performance-Benchmark (Ziel Overhead < +15%).
+- Asymmetriedaten (Geschwindigkeits-Schiefe) sobald reale Residuen vorliegen.
+
+#### 5.6.9 Sicherheitsschlüssel
+
+1. Hard-Clamp garantiert fused ∈ [lower, upper].
+2. Positiver Bias additive vs. joint P99 = dokumentierte Reserve.
+3. Qualitätsheuristik verhindert Nutzung problematischer unsicherer Ausreißer.
+4. Übergangsglättung reduziert dynamische Sprünge → minimiert falsch-positive Sicherheitsverletzungs-Alarme.
+5. Adaptive lokale Quantile verhindern unnötig großzügige globale Intervallbreite.
+
+#### 5.6.10 Testabdeckung (Stand)
+
+Abgedeckt: Bias-Konsistenz, Zeitreihen-Bias≥0, Clamping, Asymmetrie Midpoint-Shift, Basic Blend Monotonie, Switch Counting.  
+Geplant: strikte Delta-Schrittgrenze, Ausreißer-Injektion für Heuristik, Blend-Profil Outage→unsafe detailliert.
+
+#### 5.6.11 Nutzen-Zusammenfassung
+
+Reduktion potenzieller Überbreite (lokale Anpassung) bei gleichzeitiger Beibehaltung formaler Sicherheitsreserven und transparenter Betriebsmetriken (Mode Shares, Switch Rate) für spätere Felddatenvalidierung.
+
 ---
 
 ## 6. Geplante Modellierung & Fehlerpropagation
