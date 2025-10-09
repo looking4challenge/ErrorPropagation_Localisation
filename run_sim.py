@@ -325,6 +325,31 @@ def main():
                 plt.xlabel("Zeit t [s]"); plt.ylabel("Fehler [m]")
                 plt.title("Zeitverlauf Lateral & 2D RMSE")
                 plt.legend(); plt.tight_layout(); plt.savefig(fig_dir/"fused_time_lat_2d.png", dpi=150); plt.close()
+            # Secure interval growth plot
+            if (
+                ts_res.si_times is not None and ts_res.si_additive_p99 is not None
+                and ts_res.si_joint_p99 is not None and ts_res.si_bias_pct is not None
+            ):
+                df_si = pd.DataFrame({
+                    "t_s": ts_res.si_times,
+                    "p99_additive": ts_res.si_additive_p99,
+                    "p99_joint": ts_res.si_joint_p99,
+                    "bias_pct": ts_res.si_bias_pct,
+                })
+                df_si.to_csv(out_dir / "secure_interval_growth.csv", index=False)
+                plt.figure(figsize=(6.2,3.2))
+                plt.plot(ts_res.si_times, ts_res.si_additive_p99, label="Additiv P99 [m]", color="#1b9e77")
+                plt.plot(ts_res.si_times, ts_res.si_joint_p99, label="Joint P99 [m]", color="#d95f02")
+                plt.xlabel("Zeit t [s]"); plt.ylabel("Intervallhalbbreite [m]")
+                plt.title("Secure Intervall Wachstum (P99)")
+                plt.legend(); plt.grid(alpha=0.25, linestyle=":")
+                plt.tight_layout(); plt.savefig(fig_dir/"secure_interval_growth.png", dpi=150); plt.close()
+                plt.figure(figsize=(6.2,3.2))
+                plt.plot(ts_res.si_times, ts_res.si_bias_pct, label="Bias [%]", color="#7570b3")
+                plt.xlabel("Zeit t [s]"); plt.ylabel("Additiv Bias [%]")
+                plt.title("Additive vs. Joint P99 Bias Verlauf")
+                plt.legend(); plt.grid(alpha=0.25, linestyle=":")
+                plt.tight_layout(); plt.savefig(fig_dir/"secure_interval_bias.png", dpi=150); plt.close()
 
     # OAT Sensitivity
     if args.oat:

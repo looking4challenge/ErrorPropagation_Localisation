@@ -40,8 +40,8 @@
   - [x] Quantifizierung Additive-P99 Überschätzung: Vergleich MC-Faltung vs. additive Summation (Bias %, ΔP99)
   - [x] Stress-Szenario Flags: --stress balise_tail / odo_residual / heavy_map implementieren
   - [x] Latenz Early-Detection Placeholder (wenn aktiviert) neutral validieren (ΔP95 <= 0.5 mm) -> sonst deaktiviert lassen (Export early_detection_eval.json)
-  - [ ] Plot secure_interval_growth (TODO: Zeit-/Distanzmodell Integration)
-  - [ ] Unit-Test: secure_interval additive Bias > 0
+  - [x] Plot secure_interval_growth (Zeit-/Distanzmodell Integration Basis 1s Cadence)
+  - [x] Unit-Test: secure_interval additive Bias > 0 (neu geschrieben, Mehrfach-Replikation + Zeitreihenprüfung)
 
 ## Phase 5 - Sensitivität & Validierung
 
@@ -81,7 +81,7 @@
 ## Neue / Querschnittliche Aufgaben
 
 - [x] Implementieren secure_interval Export
-- [ ] Zeitverlauf (W(d) vs. Distanz) – Plot figures/secure_interval_growth.png
+- [x] Zeitverlauf (W(d) vs. Distanz) – Plot figures/secure_interval_growth.png (Zeit-proxy)
 - [ ] CLI Option --export-covariance für empirische Komponenten-Kovarianz (Validierung additive Annahme)
 - [ ] Prüf-Skript: additive_p99_bias.py (berechnet relative Überschätzung vs. Monte-Carlo quantile der Summe)
 - [ ] Early Detection Evaluierung (nur wenn Daten verfügbar) – separater Metrics-Block early_detection_eval.json

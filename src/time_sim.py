@@ -40,6 +40,11 @@ class TimeSeriesResult:
     p95_lat: np.ndarray | None = None   # lateral fused P95
     rmse_2d: np.ndarray | None = None   # radial fused RMSE
     p95_2d: np.ndarray | None = None    # radial fused P95
+    # Secure interval growth (sampled at 1s cadence) for rule-based fusion analytics
+    si_times: np.ndarray | None = None
+    si_additive_p99: np.ndarray | None = None
+    si_joint_p99: np.ndarray | None = None
+    si_bias_pct: np.ndarray | None = None
 
 
 def _prepare_static_components(cfg: Config, n: int, rng: np.random.Generator):
@@ -116,6 +121,12 @@ def simulate_time_series(cfg: Config, rng: np.random.Generator, threshold_oos: f
     unsafe_lat = np.zeros(n) if with_lateral else None
     fused_lat = None
 
+    # Secure interval growth sampling (1s cadence)
+    sample_interval_steps = max(1, int(round(1.0 / dt)))
+    si_additive_list = []
+    si_joint_list = []
+    si_time_list = []
+
     # Loop
     for k in range(n_steps):
         t = (k + 1) * dt  # time at end of step
@@ -187,7 +198,25 @@ def simulate_time_series(cfg: Config, rng: np.random.Generator, threshold_oos: f
         var_unsafe_t[k] = var_uns
         share_oos_t[k] = np.mean(np.abs(fused) > threshold_oos)
 
+        # Secure interval growth sampling
+        if (k + 1) % sample_interval_steps == 0:
+            # Component wise P99
+            p99_bal = np.percentile(np.abs(last_balise_error), 99)
+            p99_map = np.percentile(np.abs(map_err_long), 99)
+            p99_odo = np.percentile(np.abs(odo_drift), 99)
+            additive = p99_bal + p99_map + p99_odo
+            joint = np.percentile(np.abs(secure), 99)
+            bias_pct = 100.0 * (additive / joint - 1.0) if joint > 0 else np.nan
+            si_additive_list.append(additive)
+            si_joint_list.append(joint)
+            si_time_list.append((k + 1) * dt)
+
     times = dt * (np.arange(n_steps) + 1)
+    si_times = np.array(si_time_list) if si_time_list else None
+    si_add = np.array(si_additive_list) if si_additive_list else None
+    si_joint = np.array(si_joint_list) if si_joint_list else None
+    si_bias = 100.0 * (si_add / si_joint - 1.0) if si_add is not None and si_joint is not None else None
+
     return TimeSeriesResult(
         times=times,
         rmse=rmse_t,
@@ -199,6 +228,10 @@ def simulate_time_series(cfg: Config, rng: np.random.Generator, threshold_oos: f
         p95_lat=p95_lat_t,
         rmse_2d=rmse_2d_t,
         p95_2d=p95_2d_t,
+        si_times=si_times,
+        si_additive_p99=si_add,
+        si_joint_p99=si_joint,
+        si_bias_pct=si_bias,
     )
 
 
