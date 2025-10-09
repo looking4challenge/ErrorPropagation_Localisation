@@ -1,0 +1,24 @@
+{
+  "component": "fused",
+  "metrics": {
+    "mean": 0.11397988362777574,
+    "std": 0.7438455997776643,
+    "rmse": 0.752490770410351,
+    "p50": 0.11689648611643773,
+    "p90": 1.0632273760927466,
+    "p95": 1.351890138527661,
+    "p99": 1.8621447946547696,
+    "secure_interval_p99_additive": 2.236761305678859,
+    "secure_interval_p99_joint": 1.975903930667813,
+    "secure_interval_additive_bias_pct": 13.201926012813892,
+    "rmse_lateral": 0.0358011973427464,
+    "p95_lateral": 0.05898964500494052,
+    "rmse_2d": 0.7533419444607727,
+    "p95_2d": 1.4871019758527941,
+    "rmse_ci95_lower": 0.7426340663138349,
+    "rmse_ci95_upper": 0.7621040060463626,
+    "fusion_mode": "rule_based"
+  },
+  "timestamp_utc": "2025-10-09T12:47:29.575438+00:00",
+  "config": "C:\\Repos\\ErrorPropagation_Localisation\\config\\scenario_odo_5cm.yml"
+}

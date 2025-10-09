@@ -56,7 +56,14 @@ def simulate_gnss_bias_noise(cfg: Config, n: int, rng: np.random.Generator, mode
         tail_spec = gnss_mode["multipath_tail"]
         tail_vals = registry.sample(tail_spec, n, rng)
         tail = sample_mixture(np.zeros(n), tail_vals, tail_spec["weight"], rng)
-    return bias + noise + tail
+    samples = bias + noise + tail
+    # Apply outage probability (Bernoulli) if specified. Outage -> GNSS unavailable -> set contribution to 0.
+    # (IMU dead-reckoning bridging is modelled separately; here we simply drop GNSS error when unavailable.)
+    outage_p = float(gnss_mode.get("outage_prob", 0.0))
+    if outage_p > 0.0:
+        available_mask = rng.random(n) >= outage_p  # True where GNSS available
+        samples = samples * available_mask  # zero where outage
+    return samples
 
 
 def simulate_gnss_bias_noise_2d(cfg: Config, n: int, rng: np.random.Generator, mode: str) -> Tuple[np.ndarray, np.ndarray]:
@@ -75,7 +82,14 @@ def simulate_gnss_bias_noise_2d(cfg: Config, n: int, rng: np.random.Generator, m
         bias_lat = np.zeros(n)
         noise_lat = np.zeros(n)
     tail_lat = 0.0  # Lateral multipath tail not yet parameterised
-    return long, bias_lat + noise_lat + tail_lat
+    lat_samples = bias_lat + noise_lat + tail_lat
+    # Re-apply same outage mask logic to lateral axis to keep consistency.
+    outage_p = float(gnss_mode.get("outage_prob", 0.0))
+    if outage_p > 0.0:
+        available_mask = rng.random(n) >= outage_p
+        long = long * available_mask
+        lat_samples = lat_samples * available_mask
+    return long, lat_samples
 
 
 def simulate_map_error(cfg: Config, n: int, rng: np.random.Generator) -> np.ndarray:

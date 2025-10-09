@@ -1,0 +1,24 @@
+{
+  "component": "fused",
+  "metrics": {
+    "mean": 0.1144654244380459,
+    "std": 0.7408377296084547,
+    "rmse": 0.7495918829263233,
+    "p50": 0.12062181707931853,
+    "p90": 1.0671894676168907,
+    "p95": 1.3477337700886869,
+    "p99": 1.8660417907453204,
+    "secure_interval_p99_additive": 2.2245469594257608,
+    "secure_interval_p99_joint": 1.9702335613413684,
+    "secure_interval_additive_bias_pct": 12.907779213305638,
+    "rmse_lateral": 1.2809464557867633e-10,
+    "p95_lateral": 2.1135554646421723e-10,
+    "rmse_2d": 0.7495918829263233,
+    "p95_2d": 1.4898049199755306,
+    "rmse_ci95_lower": 0.7402265520782179,
+    "rmse_ci95_upper": 0.7595641759251532,
+    "fusion_mode": "rule_based"
+  },
+  "timestamp_utc": "2025-10-09T12:50:16.963219+00:00",
+  "config": "C:\\Repos\\ErrorPropagation_Localisation\\config\\scenario_no_gnss.yml"
+}

@@ -1,0 +1,14 @@
+{
+  "component": "odometry",
+  "metrics": {
+    "mean": 0.004587643379179534,
+    "std": 0.7468808011621696,
+    "rmse": 0.7468575463388614,
+    "p50": 0.0049552622960257735,
+    "p90": 0.953239316474078,
+    "p95": 1.2404640292035223,
+    "p99": 1.7788300337710756
+  },
+  "timestamp_utc": "2025-10-09T12:43:16.565363+00:00",
+  "config": "C:\\Repos\\ErrorPropagation_Localisation\\config\\scenario_regular.yml"
+}

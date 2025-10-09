@@ -1,0 +1,14 @@
+{
+  "component": "unsafe",
+  "metrics": {
+    "mean": 0.0028333805220620684,
+    "std": 0.5858098757174812,
+    "rmse": 0.5857874368849717,
+    "p50": 0.00021679137737977416,
+    "p90": 0.7643808624787162,
+    "p95": 0.9664830355787801,
+    "p99": 1.3303003364516512
+  },
+  "timestamp_utc": "2025-10-09T12:45:45.014492+00:00",
+  "config": "C:\\Repos\\ErrorPropagation_Localisation\\config\\scenario_bad_weather.yml"
+}

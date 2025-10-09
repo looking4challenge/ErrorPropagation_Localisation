@@ -1,0 +1,87 @@
+project:
+  name: ErrorPropagation_Localisation_no_gnss
+  author: TBD_AUTHOR
+  date: 2025-10-09
+sim:
+  N_samples: 10000
+  time_horizon_s: 3600
+  dt_s: 0.1
+  random_seed: 12345
+  B_bootstrap: 500
+  rho_tol: 0.05
+  delta_pct: 10
+morphology:
+  speed_range_kmh: [0, 45]
+  accel_max_mps2: 0.5
+  route_mix_pct: {open: 70, urban: 30, tunnel: 0}
+modes: ["open","urban","tunnel"]
+correlations:
+  use_copula: true
+  type: gaussian
+  variables: [map, gnss, balise, odometry, imu]
+  rho_matrix:
+    - [1.0, 0.80, 0.65, 0.10, 0.05]
+    - [0.80, 1.0, 0.30, 0.25, 0.20]
+    - [0.65, 0.30, 1.0, 0.80, 0.15]
+    - [0.10, 0.25, 0.80, 1.0, 0.40]
+    - [0.05, 0.20, 0.15, 0.40, 1.0]
+sensors:
+  balise:
+    latency_ms: {dist: trunc_normal, mean: 10.0, std: 2.0, lower: 6.0, upper: 14.0}
+    early_detection: {enabled: false, c1_ms_per_mps: 0.5, cap_ms: 4.0}
+    antenna_offset_m: {dist: normal, mean: 0.0, std: 0.02}
+    em_disturbance_m: {dist: rayleigh, sigma: 0.012}
+    multipath_tail_m: {dist: trunc_exp, lambda: 0.05, cap: 0.08, weight: 0.15}
+    weather_uniform_m: {dist: uniform, low: -0.015, high: 0.015}
+    detection:
+      p_detect_nominal: 0.99995
+      markov: {use: false, p_ok_to_deg: 1.0e-6, p_deg_to_ok: 0.01, p_detect_degraded: 0.95}
+    lateral: {dist: normal, mean: 0.032, std: 0.009}
+  odometry:
+    quant_step_m: 0.0134
+    residual_circumference_m: {dist: uniform, low: -0.02, high: 0.02}
+    drift_per_km_m: 0.010
+  map:
+    longitudinal:
+      ref_error: {dist: normal, mean: 0.0, std: 0.019}
+      interpolation: {dist: trunc_exp, lambda: 0.02, cap: 0.05, weight: 0.30}
+      scale: {dist: normal, mean: 0.0, std: 0.0006, activation_distance_m: 2000}
+    lateral:
+      ref_error: {dist: normal, mean: 0.0, std: 0.014}
+  gnss:
+    modes:
+      open:
+        bias: {dist: normal, mean: 0.0, std: 0.25}
+        bias_lat: {dist: normal, mean: 0.0, std: 0.22}
+        noise: {dist: normal, mean: 0.0, std: 0.30}
+        noise_lat: {dist: normal, mean: 0.0, std: 0.28}
+        outage_prob: 1.0   # Vollständiger Ausfall → System nutzt nur sicheren Pfad
+      urban:
+        bias: {dist: normal, mean: 0.0, std: 0.50}
+        bias_lat: {dist: normal, mean: 0.0, std: 0.45}
+        noise: {dist: normal, mean: 0.0, std: 0.80}
+        noise_lat: {dist: normal, mean: 0.0, std: 0.75}
+        multipath_tail: {dist: trunc_exp, lambda: 2.0, cap: 3.0, weight: 0.10}
+        outage_prob: 1.0   # Auch urban deaktiviert
+      tunnel:
+        outage_prob: 1.0
+        hold_last_valid_s: 0.0
+  imu:
+    accel_bias_mps2: {dist: normal, mean: 0.0, std: 0.005, rw_tau_s: 900}
+    gyro_bias_dps: {dist: normal, mean: 0.0, std: 0.02, rw_tau_s: 900}
+    accel_noise_density_mps2_sqrtHz: 0.05
+    gyro_noise_density_dps_sqrtHz: 0.01
+  fusion:
+    rule_based: true
+    filter_proxy: rule_based_4rules
+    blend_steps: 5
+    latency_ms: {dist: trunc_normal, mean: 20.0, std: 5.0, lower: 10.0, upper: 35.0}
+    timestamp_jitter_ms: 5.0
+
+secure_interval:
+  method: additive_p99
+  conservative: true
+
+reporting:
+  metrics: [rmse_longitudinal, rmse_lateral, p50, p90, p95, p99]
+  export_formats: [csv]

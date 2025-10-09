@@ -1,0 +1,14 @@
+{
+  "component": "gnss_urban",
+  "metrics": {
+    "mean": 0.052078085167194636,
+    "std": 0.9609288173462407,
+    "rmse": 0.9622910061628581,
+    "p50": 0.05089072532140673,
+    "p90": 1.267311052619007,
+    "p95": 1.626852256829652,
+    "p99": 2.3302938455380136
+  },
+  "timestamp_utc": "2025-10-09T12:44:23.197793+00:00",
+  "config": "C:\\Repos\\ErrorPropagation_Localisation\\config\\scenario_no_gnss.yml"
+}

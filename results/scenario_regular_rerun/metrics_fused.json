@@ -1,0 +1,24 @@
+{
+  "component": "fused",
+  "metrics": {
+    "mean": 0.11455057870361765,
+    "std": 0.741155134957956,
+    "rmse": 0.7499185542860453,
+    "p50": 0.12059610907931242,
+    "p90": 1.067908746035999,
+    "p95": 1.3477337700886869,
+    "p99": 1.8660417907453204,
+    "secure_interval_p99_additive": 2.2245469594257608,
+    "secure_interval_p99_joint": 1.9702335613413684,
+    "secure_interval_additive_bias_pct": 12.907779213305638,
+    "rmse_lateral": 0.035817220002950234,
+    "p95_lateral": 0.059085809768887436,
+    "rmse_2d": 0.7507734087667277,
+    "p95_2d": 1.489944704810177,
+    "rmse_ci95_lower": 0.7405184824183083,
+    "rmse_ci95_upper": 0.7598166661134487,
+    "fusion_mode": "rule_based"
+  },
+  "timestamp_utc": "2025-10-09T12:50:03.587134+00:00",
+  "config": "C:\\Repos\\ErrorPropagation_Localisation\\config\\scenario_regular.yml"
+}
