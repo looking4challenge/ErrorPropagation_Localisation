@@ -19,7 +19,14 @@ from src.sim_sensors import (
     simulate_imu_bias_position_error,
     combine_2d,
 )
-from src.metrics import summarize, bootstrap_ci, rmse
+from src.metrics import (
+    summarize,
+    bootstrap_ci,
+    rmse,
+    quantile_convergence_trace,
+    rmse_convergence_trace,
+    es_convergence_trace,
+)
 from src.fusion import fuse_pair, rule_based_fusion
 from src.plots import (
     plot_pdf,
@@ -55,6 +62,8 @@ def main():
     ap.add_argument("--oos-threshold", type=float, default=0.2, help="Out-of-spec threshold for share_oos metric (m)")
     ap.add_argument("--fusion-mode", choices=["var_weight","rule_based"], default=None, help="Override fusion mode (default: config driven)")
     ap.add_argument("--export-secure-interval", action="store_true", help="Export secure interval metrics CSV (width, additive vs joint P99, bias %)")
+    ap.add_argument("--export-covariance", action="store_true", help="Export empirische Kovarianz/Korrelation der secure Komponenten (validiert additive Annahme)")
+    ap.add_argument("--convergence", action="store_true", help="Export Konvergenz-Traces (RMSE, P95, P99, ES95)")
     ap.add_argument("--stress", nargs="*", default=None, help="Stress scenario flags: balise_tail, odo_residual, heavy_map")
     ap.add_argument("--early-detect-validate", action="store_true", help="Validate Early-Detection impact (ΔP95) and log result")
     ap.add_argument("--override-n", type=int, default=None, help="Override N_samples (dev/performance)")
@@ -234,6 +243,38 @@ def main():
             "n_samples": n,
         }]
         pd.DataFrame(si_rows).to_csv(out_dir / "secure_interval_metrics.csv", index=False)
+
+    # Export empirical covariance/correlation of secure components
+    if getattr(args, "export_covariance", False):
+        comp_names = list(secure_components.keys())
+        comp_mat = np.column_stack([secure_components[c] for c in comp_names])
+        cov = np.cov(comp_mat, rowvar=False, ddof=1)
+        corr = np.corrcoef(comp_mat, rowvar=False)
+        rows_cov = []
+        for i, ci in enumerate(comp_names):
+            for j, cj in enumerate(comp_names):
+                rows_cov.append({
+                    "comp_i": ci,
+                    "comp_j": cj,
+                    "cov": float(cov[i, j]),
+                    "corr": float(corr[i, j]),
+                })
+        pd.DataFrame(rows_cov).to_csv(out_dir / "covariance_components_secure.csv", index=False)
+
+    # Convergence traces (quantiles, RMSE, ES95) for fused path
+    if getattr(args, "convergence", False):
+        abs_fused = np.abs(fused)
+        # Heuristic batch size: aim for ~10 batches (min 1000)
+        batch_size = max(1000, int(n / 10))
+        q_trace = quantile_convergence_trace(abs_fused, quantiles=(0.95, 0.99), batch_size=batch_size)
+        rmse_trace = rmse_convergence_trace(fused, batch_size=batch_size)
+        es_trace = es_convergence_trace(fused, p=0.95, batch_size=batch_size, B_boot=120)
+        if q_trace:
+            pd.DataFrame(q_trace).to_csv(out_dir / "convergence_quantiles.csv", index=False)
+        if rmse_trace:
+            pd.DataFrame(rmse_trace).to_csv(out_dir / "convergence_rmse.csv", index=False)
+        if es_trace:
+            pd.DataFrame(es_trace).to_csv(out_dir / "convergence_es95.csv", index=False)
 
     # Plots & Legendentabelle
     if not args.no_plots:
