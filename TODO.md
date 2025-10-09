@@ -46,18 +46,18 @@
 ## Phase 5 - Sensitivität & Validierung
 
 - [x] OAT Sensitivität (Baseline Ranking, longitudinal RMSE)
-- [ ] OAT Erweiterung lateral/2D (optional)
+- [x] OAT Erweiterung lateral/2D (ΔRMSE_lat, ΔRMSE_2d, ΔP95_2d)
 - [x] Sobol (Longitudinal RMSE – Jansen Fallback, Basisgröße klein)
 - [x] ES95 (Expected Shortfall 95%) Conditioning
 - [ ] Validierung gegen Daten (falls vorhanden)
   - [ ] Quer/Längs Residuen getrennt (falls Daten 2D enthalten)
-- [x] Konsolidierter Sensitivitätsbericht (inkl. Sobol & ΔES95)
+- [x] Additive vs. Joint P99 Sensitivität (Bias Ranking implementiert)
+- [x] Konsolidierter Sensitivitätsbericht (inkl. Sobol & ΔES95) – Basis vorhanden, Erweiterung folgt
   - [ ] Sobol Verfeinerung (N_base erhöhen)
-  - [ ] Erweiterung auf rmse_2d / p95_2d
-  - [ ] OAT Erweiterung lateral/2D (ΔRMSE_lat, ΔRMSE_2d, ΔP95_2d)
-  - [ ] Additive vs. Joint P99 Sensitivität (Ranking Einfluss Korrelationen auf Intervallbreite)
+  - [ ] Erweiterung Sobol auf rmse_2d / p95_2d (Parameterliste ggf. ausdünnen)
   - [ ] Parameter-Subset für Stress Szenarien (Tail Gewicht w_tail, odo residual range, map interpolation weight) global analysieren
   - [ ] Dokumentation Sensitivitätsimplikationen: Top 5 Parameter → empfohlene Überwachungen / Kalibrierung
+  - [ ] Integration OAT2D & Bias Sensitivität in Bericht (Tabellen + Kurzinterpretation)
 
 ## Phase 6 - Bericht
 

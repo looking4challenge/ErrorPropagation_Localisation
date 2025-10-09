@@ -32,6 +32,8 @@ from src.plots import (
 from src.time_sim import simulate_time_series
 from src.sensitivity import (
     oat_sensitivity,
+    oat_sensitivity_2d,
+    additive_p99_bias_sensitivity,
     default_oat_params,
     lean_src_prcc_pipeline,
     quantile_conditioning,
@@ -58,6 +60,9 @@ def main():
     ap.add_argument("--override-n", type=int, default=None, help="Override N_samples (dev/performance)")
     ap.add_argument("--oat", action="store_true", help="Run OAT sensitivity (longitudinal RMSE proxy)")
     ap.add_argument("--oat-params", nargs="*", default=None, help="Explicit dotted param paths for OAT (overrides default list)")
+    ap.add_argument("--oat-2d", action="store_true", help="Run extended OAT sensitivity (long/lat/2D metrics)")
+    ap.add_argument("--oat-2d-params", nargs="*", default=None, help="Explicit param paths for OAT 2D (fallback: OAT defaults)")
+    ap.add_argument("--p99-bias-sens", action="store_true", help="Parameter impact on additive vs joint P99 bias (secure path)")
     # Lean Erweiterung Flags
     ap.add_argument("--src-prcc", action="store_true", help="Compute SRC & PRCC rankings (lean)")
     ap.add_argument("--quantile-p", type=float, default=95.0, help="Quantile level for conditioning ΔQp (default 95)")
@@ -372,6 +377,82 @@ def main():
             plt.title(f"OAT Sensitivität (±{delta_pct:.1f}% Perturbation)")
             plt.tight_layout(); plt.savefig(Path(args.figdir)/"oat_bar.png", dpi=150); plt.close()
 
+    # Extended OAT 2D Sensitivity
+    if getattr(args, 'oat_2d', False):
+        param_list_2d = args.oat_2d_params if args.oat_2d_params else (args.oat_params if args.oat_params else default_oat_params(cfg))
+        delta_pct = float(cfg.sim.get("delta_pct", 10))
+        rng_oat2d = np.random.default_rng(get_seed(cfg) + 1777)
+        results_2d = oat_sensitivity_2d(cfg, param_list_2d, delta_pct, min(2500, n), rng_oat2d)
+        pd.DataFrame(results_2d).to_csv(out_dir / "sensitivity_oat_2d.csv", index=False)
+        if not args.no_plots and results_2d:
+            import matplotlib.pyplot as plt
+            plt.figure(figsize=(7.2, max(2.4, 0.45 * len(results_2d))))
+            params = [r['param'] for r in results_2d]
+            overall = [r['abs_effect_overall_pct'] for r in results_2d]
+            y = np.arange(len(params))
+            plt.barh(y, overall, color="#32648e")
+            plt.yticks(y, params)
+            plt.xlabel("Max |Δ| über Metriken [%]")
+            plt.title(f"OAT 2D Sensitivität (±{delta_pct:.1f}%) – Gesamt")
+            plt.grid(alpha=0.25, linestyle=":")
+            plt.tight_layout(); plt.savefig(Path(args.figdir)/"oat_2d_overall_bar.png", dpi=150); plt.close()
+            # Per-Metrik Vergleich (gruppenweise Balken): nur falls Effekte vorhanden
+            metric_keys = [
+                ("rmse_long", "abs_effect_rmse_long_pct"),
+                ("rmse_lat", "abs_effect_rmse_lat_pct"),
+                ("rmse_2d", "abs_effect_rmse_2d_pct"),
+                ("p95_lat", "abs_effect_p95_lat_pct"),
+                ("p95_2d", "abs_effect_p95_2d_pct"),
+            ]
+            # Build matrix param x metric
+            effects_mat = []
+            for r in results_2d:
+                row = []
+                for _, key in metric_keys:
+                    row.append(r.get(key, np.nan))
+                effects_mat.append(row)
+            effects_arr = np.array(effects_mat, dtype=float)
+            if not np.all(np.isnan(effects_arr)):
+                plt.figure(figsize=(8.2, max(2.6, 0.50 * len(results_2d))))
+                n_params = len(results_2d)
+                n_metrics = len(metric_keys)
+                y = np.arange(n_params)
+                bar_h = 0.12 if n_metrics > 4 else 0.16
+                # Center bars around y
+                offsets = np.linspace(-(n_metrics-1)/2.0*bar_h*1.2, (n_metrics-1)/2.0*bar_h*1.2, n_metrics)
+                palette = ["#1b9e77", "#d95f02", "#7570b3", "#e7298a", "#66a61e"]
+                for mi, (label, _) in enumerate(metric_keys):
+                    vals = effects_arr[:, mi]
+                    if np.all(np.isnan(vals)):
+                        continue
+                    plt.barh(y + offsets[mi], vals, height=bar_h, label=label, color=palette[mi % len(palette)])
+                plt.yticks(y, params)
+                plt.xlabel("|Δ| [%]")
+                plt.title("OAT 2D – Aufgeschlüsselte Effekte je Metrik")
+                plt.grid(alpha=0.25, linestyle=":")
+                plt.legend(fontsize=8, ncol=2)
+                plt.tight_layout(); plt.savefig(Path(args.figdir)/"oat_2d_per_metric.png", dpi=150); plt.close()
+
+    # Additive vs Joint P99 Bias Sensitivity
+    if getattr(args, 'p99_bias_sens', False):
+        param_list_bias = args.oat_params if args.oat_params else default_oat_params(cfg)
+        delta_pct = float(cfg.sim.get("delta_pct", 10))
+        rng_bias = np.random.default_rng(get_seed(cfg) + 5151)
+        bias_rows = additive_p99_bias_sensitivity(cfg, param_list_bias, delta_pct, min(4000, n), rng_bias)
+        pd.DataFrame(bias_rows).to_csv(out_dir / "sensitivity_additive_p99_bias.csv", index=False)
+        if not args.no_plots and bias_rows:
+            import matplotlib.pyplot as plt
+            plt.figure(figsize=(7.0, max(2.4, 0.45 * len(bias_rows))))
+            params = [r['param'] for r in bias_rows]
+            delta_bias = [r['delta_bias_pct_max_abs'] for r in bias_rows]
+            y = np.arange(len(params))
+            plt.barh(y, delta_bias, color="#8c564b")
+            plt.yticks(y, params)
+            plt.xlabel("Max |Δ Bias| [%-Pkt]")
+            plt.title(f"Additive vs Joint P99 Bias Sensitivität (±{delta_pct:.1f}%)")
+            plt.grid(alpha=0.25, linestyle=":")
+            plt.tight_layout(); plt.savefig(Path(args.figdir)/"sensitivity_additive_p99_bias.png", dpi=150); plt.close()
+
     # Lean Erweiterung: SRC + PRCC + Quantil & Exceedance Analysen
     if args.src_prcc or args.quantile_conditioning or args.exceedance:
         # Komponenten-Samples zusammenstellen (Basis gleiche wie secure/unsafe decomposition)
@@ -539,7 +620,7 @@ def main():
     print(
         f"Saved metrics (JSON + CSV) to {out_dir}. Plots={'on' if not args.no_plots else 'off'} (minimal={args.minimal_plots}). "
         f"Raw samples={'saved' if args.save_samples else 'skipped'}. Time-series={'on' if args.time_series else 'off'}. "
-        f"OAT={'on' if args.oat else 'off'}. SRC/PRCC={'on' if args.src_prcc else 'off'}. Quantile={'on' if args.quantile_conditioning else 'off'}. Exceedance={'on' if args.exceedance else 'off'}. Sobol={'on' if args.sobol else 'off'}. ES95={'on' if args.es95 else 'off'}. FusionMode={fusion_mode}. Stress={','.join(stress_flags) if stress_flags else 'none'}."
+        f"OAT={'on' if args.oat else 'off'}. OAT2D={'on' if getattr(args,'oat_2d',False) else 'off'}. P99BiasSens={'on' if getattr(args,'p99_bias_sens',False) else 'off'}. SRC/PRCC={'on' if args.src_prcc else 'off'}. Quantile={'on' if args.quantile_conditioning else 'off'}. Exceedance={'on' if args.exceedance else 'off'}. Sobol={'on' if args.sobol else 'off'}. ES95={'on' if args.es95 else 'off'}. FusionMode={fusion_mode}. Stress={','.join(stress_flags) if stress_flags else 'none'}."
     )
 
 

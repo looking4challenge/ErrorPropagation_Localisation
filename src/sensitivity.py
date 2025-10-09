@@ -565,6 +565,8 @@ def lean_src_prcc_pipeline(component_samples: Dict[str, np.ndarray], fused_long:
 
 __all__ = [
     "oat_sensitivity",
+    "oat_sensitivity_2d",
+    "additive_p99_bias_sensitivity",
     "default_oat_params",
     "compute_src",
     "compute_prcc",
@@ -574,3 +576,161 @@ __all__ = [
     "sobol_sensitivity",
     "lean_src_prcc_pipeline",
 ]
+
+
+def oat_sensitivity_2d(cfg: Config, param_paths: List[str], delta_pct: float, n: int, rng: np.random.Generator) -> List[Dict[str, Any]]:
+    """Extended OAT Sensitivität für longitudinale, laterale und 2D Fehler-Metriken.
+
+    Für jede Parameter-Perturbation ±delta_pct% werden folgende Kennzahlen berechnet:
+      - RMSE_long, RMSE_lat, RMSE_2d
+      - P95_lat, P95_2d
+    Relativer Effekt wird als max(|Δ|/Baseline) * 100 [%] je Kennzahl ausgewiesen.
+    """
+    # Baseline
+    base_long, base_lat, base_2d = _sample_fused_errors(cfg, n, rng)
+    baseline = {
+        "rmse_long": rmse(base_long),
+        "rmse_lat": rmse(base_lat),
+        "rmse_2d": rmse(base_2d),
+        "p95_lat": float(np.percentile(np.abs(base_lat), 95)),
+        "p95_2d": float(np.percentile(np.abs(base_2d), 95)),
+    }
+    results: List[Dict[str, Any]] = []
+    for p in param_paths:
+        keys = p.split('.')
+        parent = cfg.raw
+        for k in keys[:-1]:
+            if k not in parent:
+                raise KeyError(f"Path segment '{k}' missing for parameter '{p}'")
+            parent = parent[k]
+        leaf = keys[-1]
+        if leaf not in parent:
+            raise KeyError(f"Leaf '{leaf}' not found for parameter '{p}'")
+        orig = parent[leaf]
+        if not isinstance(orig, (int, float)):
+            continue
+        delta = orig * (delta_pct / 100.0)
+        if delta == 0.0:
+            delta = max(1e-6, 0.01 * baseline["rmse_long"])  # fallback epsilon
+        # minus
+        parent[leaf] = orig - delta
+        m_long_m, m_lat_m, m_2d_m = _sample_fused_errors(cfg, n, rng)
+        minus_metrics = {
+            "rmse_long": rmse(m_long_m),
+            "rmse_lat": rmse(m_lat_m),
+            "rmse_2d": rmse(m_2d_m),
+            "p95_lat": float(np.percentile(np.abs(m_lat_m), 95)),
+            "p95_2d": float(np.percentile(np.abs(m_2d_m), 95)),
+        }
+        # plus
+        parent[leaf] = orig + delta
+        m_long_p, m_lat_p, m_2d_p = _sample_fused_errors(cfg, n, rng)
+        plus_metrics = {
+            "rmse_long": rmse(m_long_p),
+            "rmse_lat": rmse(m_lat_p),
+            "rmse_2d": rmse(m_2d_p),
+            "p95_lat": float(np.percentile(np.abs(m_lat_p), 95)),
+            "p95_2d": float(np.percentile(np.abs(m_2d_p), 95)),
+        }
+        # restore
+        parent[leaf] = orig
+        row: Dict[str, float] = {"param": p}  # type: ignore
+        # Store baseline and perturbed metrics + relative changes
+        for k_metric in baseline.keys():
+            base_v = baseline[k_metric]
+            minus_v = minus_metrics[k_metric]
+            plus_v = plus_metrics[k_metric]
+            row[f"baseline_{k_metric}"] = base_v
+            row[f"{k_metric}_minus"] = minus_v
+            row[f"{k_metric}_plus"] = plus_v
+            if base_v != 0:
+                row[f"rel_change_{k_metric}_minus_pct"] = 100.0 * (minus_v - base_v) / base_v
+                row[f"rel_change_{k_metric}_plus_pct"] = 100.0 * (plus_v - base_v) / base_v
+                row[f"abs_effect_{k_metric}_pct"] = max(abs(row[f"rel_change_{k_metric}_minus_pct"]), abs(row[f"rel_change_{k_metric}_plus_pct"]))
+            else:
+                row[f"rel_change_{k_metric}_minus_pct"] = np.nan
+                row[f"rel_change_{k_metric}_plus_pct"] = np.nan
+                row[f"abs_effect_{k_metric}_pct"] = np.nan
+        # Overall combined effect proxy: max over metrics
+        per_metric_effects = [row.get(f"abs_effect_{m}_pct", 0.0) for m in baseline.keys() if not math.isnan(row.get(f"abs_effect_{m}_pct", np.nan))]
+        row["abs_effect_overall_pct"] = max(per_metric_effects) if per_metric_effects else 0.0
+        results.append(row)
+    # Sort by overall effect descending
+    results.sort(key=lambda d: d.get("abs_effect_overall_pct", 0.0), reverse=True)
+    return results
+
+
+def additive_p99_bias_sensitivity(cfg: Config, param_paths: List[str], delta_pct: float, n: int, rng: np.random.Generator) -> List[Dict[str, Any]]:
+    """Analyse Einfluss von Parametern auf additive vs. joint P99 Bias.
+
+    Für jede Parametervariation ±delta_pct% werden additive und joint P99 (|secure_path|) berechnet.
+    Rückgabe enthält Änderung der Bias-Prozentzahl (additiv/joint - 1)*100.
+    Sicherer Pfad = Balise + Odometrie + Map (longitudinale Komponenten) – entspricht run_sim.
+    """
+    # Baseline secure Komponenten
+    bal_base = simulate_balise_errors(cfg, n, rng)
+    map_base = simulate_map_error(cfg, n, rng)
+    odo_base = simulate_odometry_segment_error(cfg, n, rng)
+    secure_base = bal_base + map_base + odo_base
+    p99_components_base = {
+        "balise": float(np.percentile(np.abs(bal_base), 99)),
+        "map": float(np.percentile(np.abs(map_base), 99)),
+        "odometry": float(np.percentile(np.abs(odo_base), 99)),
+    }
+    additive_p99_base = float(sum(p99_components_base.values()))
+    joint_p99_base = float(np.percentile(np.abs(secure_base), 99))
+    bias_base_pct = 100.0 * (additive_p99_base / joint_p99_base - 1.0) if joint_p99_base > 0 else float('nan')
+    results: List[Dict[str, Any]] = []
+    for p in param_paths:
+        keys = p.split('.')
+        parent = cfg.raw
+        for k in keys[:-1]:
+            if k not in parent:
+                raise KeyError(f"Path segment '{k}' missing for parameter '{p}'")
+            parent = parent[k]
+        leaf = keys[-1]
+        if leaf not in parent:
+            raise KeyError(f"Leaf '{leaf}' not found for parameter '{p}'")
+        orig = parent[leaf]
+        if not isinstance(orig, (int, float)):
+            continue
+        delta = orig * (delta_pct / 100.0)
+        if delta == 0.0:
+            delta = max(1e-6, 0.01 * additive_p99_base)
+        def _eval_current():
+            b = simulate_balise_errors(cfg, n, rng)
+            m = simulate_map_error(cfg, n, rng)
+            o = simulate_odometry_segment_error(cfg, n, rng)
+            secure = b + m + o
+            comp_p99 = [
+                float(np.percentile(np.abs(b), 99)),
+                float(np.percentile(np.abs(m), 99)),
+                float(np.percentile(np.abs(o), 99)),
+            ]
+            additive = float(sum(comp_p99))
+            joint = float(np.percentile(np.abs(secure), 99))
+            bias_pct = 100.0 * (additive / joint - 1.0) if joint > 0 else float('nan')
+            return additive, joint, bias_pct
+        # minus
+        parent[leaf] = orig - delta
+        add_m, joint_m, bias_m = _eval_current()
+        # plus
+        parent[leaf] = orig + delta
+        add_p, joint_p, bias_p = _eval_current()
+        # restore
+        parent[leaf] = orig
+        results.append({
+            "param": p,
+            "baseline_additive_p99": additive_p99_base,
+            "baseline_joint_p99": joint_p99_base,
+            "baseline_bias_pct": bias_base_pct,
+            "additive_p99_minus": add_m,
+            "joint_p99_minus": joint_m,
+            "bias_pct_minus": bias_m,
+            "additive_p99_plus": add_p,
+            "joint_p99_plus": joint_p,
+            "bias_pct_plus": bias_p,
+            "delta_bias_pct_max_abs": max(abs(bias_m - bias_base_pct), abs(bias_p - bias_base_pct)),
+        })
+    results.sort(key=lambda r: r["delta_bias_pct_max_abs"], reverse=True)
+    return results
