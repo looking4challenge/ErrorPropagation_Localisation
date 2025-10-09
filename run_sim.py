@@ -69,6 +69,7 @@ def main():
     ap.add_argument("--fusion-stats", action="store_true", help="Exportiert Fusionsmodusanteile & Switch Rate (fusion_mode_stats.csv, fusion_switch_rate.csv)")
     ap.add_argument("--export-interval-bounds", action="store_true", help="Exportiert finale Intervallgrenzen je Sample (secure_interval_bounds.csv)")
     ap.add_argument("--convergence", action="store_true", help="Export Konvergenz-Traces (RMSE, P95, P99, ES95)")
+    ap.add_argument("--perf", action="store_true", help="Messe Runtime adaptiver stateful Fusion vs. Legacy (nur Kurzlauf)")
     ap.add_argument("--stress", nargs="*", default=None, help="Stress scenario flags: balise_tail, odo_residual, heavy_map")
     ap.add_argument("--early-detect-validate", action="store_true", help="Validate Early-Detection impact (ΔP95) and log result")
     ap.add_argument("--override-n", type=int, default=None, help="Override N_samples (dev/performance)")
@@ -327,6 +328,8 @@ def main():
 
     # Optional time-series run
     if args.time_series:
+        import time
+        t0 = time.perf_counter()
         ts_res = simulate_time_series(
             cfg, rng,
             threshold_oos=args.oos_threshold,
@@ -336,6 +339,7 @@ def main():
             export_interval_bounds=args.export_interval_bounds,
             blend_steps=cfg.sensors.get("fusion", {}).get("blend_steps", 5),
         )
+        t1 = time.perf_counter()
         data_map = {
             "t_s": ts_res.times,
             "rmse_long": ts_res.rmse,
@@ -458,6 +462,34 @@ def main():
                 plt.title("Asymmetrische Intervallgrenzen Snapshot")
                 plt.legend(fontsize=8)
                 plt.tight_layout(); plt.savefig(fig_dir/"fused_time_interval_bounds.png", dpi=150); plt.close()
+        # Optional performance benchmark vs. legacy
+        if args.perf:
+            # Short legacy run (disable rule based & adaptive)
+            cfg_legacy = load_config(args.config)
+            # Force disable rule-based
+            if "fusion" in cfg_legacy.sensors and cfg_legacy.sensors["fusion"].get("rule_based", False):
+                cfg_legacy.sensors["fusion"]["rule_based"] = False
+            rng_legacy = np.random.default_rng(get_seed(cfg_legacy) + 2222)
+            import time as _time
+            tL0 = _time.perf_counter()
+            simulate_time_series(
+                cfg_legacy, rng_legacy,
+                threshold_oos=args.oos_threshold,
+                with_lateral=False,
+                adaptive_interval=False,
+                interval_update_cadence_s=float(args.interval_update_cadence_s),
+                export_interval_bounds=False,
+                blend_steps=cfg_legacy.sensors.get("fusion", {}).get("blend_steps", 5),
+            )
+            tL1 = _time.perf_counter()
+            pd.DataFrame([{
+                "runtime_adaptive_s": t1 - t0,
+                "runtime_legacy_s": tL1 - tL0,
+                "overhead_pct": 100.0 * ((t1 - t0)/(tL1 - tL0) - 1.0) if (tL1 - tL0) > 0 else float('nan'),
+                "n_samples": int(cfg.sim.get("N_samples", 0)),
+                "horizon_s": float(cfg.sim.get("time_horizon_s", 0.0)),
+                "dt_s": float(cfg.sim.get("dt_s", 0.0)),
+            }]).to_csv(out_dir / "performance_fusion_runtime.csv", index=False)
 
     # OAT Sensitivity
     if args.oat:

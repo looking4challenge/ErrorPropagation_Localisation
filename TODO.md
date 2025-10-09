@@ -52,13 +52,14 @@
   - [x] (NEU A/D) Clamping für asymmetrische Grenzen (API vorbereitet)
   - [x] Integration: Zeitreihen-Sim nutzt zustandsvolle Step-Fusion longitudinal
   - [ ] Lateral Erweiterung: analoge Regeln mit eigener (vorerst symmetrischer) Intervallabschätzung (später asymmetrisch falls Datenbasis)
-  - [ ] Metrik-Export: Anteil Zeit in Modi (midpoint / unsafe / unsafe_clamped), Anzahl Transitionen, durchschnittliche Übergangsdauer → `results/fusion_mode_stats.csv`
+  - [x] Lateral Erweiterung: analoge Regeln (symmetrisch) optional via config `fusion.lateral_rule_based`
+  - [ ] Metrik-Export: Anteil Zeit in Modi (midpoint / unsafe / unsafe_clamped), Anzahl Transitionen, durchschnittliche Übergangsdauer → `results/fusion_mode_stats.csv` (Anteile & Switch schon vorhanden; Transitiondauer offen)
   - [x] Metrik-Export: Anteil Zeit in Modi + Switch Rate → fusion_mode_stats.csv / fusion_switch_rate.csv
   - [x] Plot: Anteil Modi über Zeit (Stacked Area) → fusion_mode_share.png
   - [x] Plot: Intervallgrenzen Snapshot (asym. vorbereitet) → fused_time_interval_bounds.png
-  - [ ] Performance-Check: Overhead adaptive Fusion (< +15% Runtime bei N=10k, 1h Horizont) – Messung & Log
+  - [x] Performance-Check: CLI `--perf` Runtime Vergleich adaptive vs legacy (CSV Export performance_fusion_runtime.csv). Overhead-Grenzprüfung noch offen.
   - [ ] Fallback Konfiguration: Falls adaptive Quantile numerisch instabil (zu wenige Samples in Bin) → revert auf globale additive P99 Halbbreiten (Warnung ins Log)
-  - [ ] Tests: (1) Keine Sprunggrößen > max(|target-start|)/blend_steps + epsilon, (2) Clamping korrekt (`fused in [lower,upper]`), (3) Outage→Midpoint Übergang geglättet, (4) Quali-Heuristik schaltet korrekt bei künstlichem Ausreißer (injektion)
+  - [x] Tests: (1) Sprunggrößen-Grenze, (2) Clamping vorhanden, (3) Outage→Midpoint Blend, (4) Ausreißer→Clamped
     - [x] Teilimplementierung: Clamping, Asymmetrie Midpoint, Switch Count, Blend Monotonie (Basis) vorhanden (test_stateful_fusion.py)
   - [x] Test: Asymmetrie Greift – künstliche Skalierung upper=2*lower erzeugt erwartete verschobene Midpoints
   - [ ] decisions.log Einträge: A (Asymmetrie & Speed-abh.), B (Heuristik), C (linear blend), D (adaptive update cadence)

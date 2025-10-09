@@ -146,8 +146,9 @@ def simulate_time_series(cfg: Config, rng: np.random.Generator, threshold_oos: f
     update_steps = max(1, int(round(interval_update_cadence_s / dt)))
     use_rule_based = fusion_cfg.get("rule_based", False)
 
-    # Stateful fusion initialisation (longitudinal only for now)
+    # Stateful fusion initialisation (longitudinal & lateral if enabled)
     state = RuleFusionState(fused=np.zeros(n), mode=np.zeros(n, dtype=int), blend_left=np.zeros(n, dtype=int))
+    state_lat = RuleFusionState(fused=np.zeros(n), mode=np.zeros(n, dtype=int), blend_left=np.zeros(n, dtype=int)) if (with_lateral and fusion_cfg.get("lateral_rule_based", False)) else None
     # Interval placeholders
     lower = None
     upper = None
@@ -225,6 +226,9 @@ def simulate_time_series(cfg: Config, rng: np.random.Generator, threshold_oos: f
             # Outage mask already known
             outage_mask = outage
             fused, state, meta_f = rule_based_fusion_step(secure, unsafe, lower, upper, outage_mask, state, blend_steps=blend_steps)
+            # Compute variances for metrics (even if unused by fusion path)
+            var_sec = np.var(secure, ddof=1)
+            var_uns = np.var(unsafe, ddof=1)
             mode_mid.append(meta_f["n_midpoint"]/n)
             mode_uns.append(meta_f["n_unsafe"]/n)
             mode_uns_cl.append(meta_f["n_unsafe_clamped"]/n)
@@ -234,14 +238,25 @@ def simulate_time_series(cfg: Config, rng: np.random.Generator, threshold_oos: f
             var_sec = np.var(secure, ddof=1)
             var_uns = np.var(unsafe, ddof=1)
             fused, _ = fuse_pair(secure, np.full(n, var_sec), unsafe, np.full(n, var_uns))
+        # Lateral fusion path (rule-based optional)
         if with_lateral and last_balise_lat_error is not None and secure_lat is not None and unsafe_lat is not None:
-            var_sec_lat = np.var(secure_lat, ddof=1)
-            var_uns_lat = np.var(unsafe_lat, ddof=1)
-            fused_lat, _ = fuse_pair(secure_lat, np.full(n, var_sec_lat), unsafe_lat, np.full(n, var_uns_lat))
+            if fusion_cfg.get("lateral_rule_based", False):
+                # Derive (currently symmetric) interval from additive P99 of components (balise_lat + map_lat)
+                q_lat = float(np.percentile(np.abs(secure_lat), 99))
+                lower_lat = -np.full(n, q_lat)
+                upper_lat = np.full(n, q_lat)
+                outage_lat = outage  # assume identical outage pattern for lateral GNSS
+                if state_lat is None:
+                    state_lat = RuleFusionState(fused=np.zeros(n), mode=np.zeros(n, dtype=int), blend_left=np.zeros(n, dtype=int))
+                fused_lat, state_lat, _ = rule_based_fusion_step(secure_lat, unsafe_lat, lower_lat, upper_lat, outage_lat, state_lat, blend_steps=blend_steps)
+            else:
+                var_sec_lat = np.var(secure_lat, ddof=1)
+                var_uns_lat = np.var(unsafe_lat, ddof=1)
+                fused_lat, _ = fuse_pair(secure_lat, np.full(n, var_sec_lat), unsafe_lat, np.full(n, var_uns_lat))
 
-        # Metrics
-    rmse_t[k] = np.sqrt(np.mean(fused ** 2))
-    p95_t[k] = np.percentile(fused, 95)
+        # Metrics (inside loop)
+        rmse_t[k] = np.sqrt(np.mean(fused ** 2))
+        p95_t[k] = np.percentile(fused, 95)
         if with_lateral and last_balise_lat_error is not None and fused_lat is not None:
             if rmse_lat_t is not None and p95_lat_t is not None:
                 rmse_lat_t[k] = np.sqrt(np.mean(fused_lat ** 2))

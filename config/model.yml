@@ -159,6 +159,7 @@ sensors:
     rule_based: true
     filter_proxy: rule_based_4rules
     blend_steps: 5            # sanfte Überblendung bei (Re-)Verfügbarkeit
+    lateral_rule_based: false  # Optional: analoge regelbasierte Fusion lateral (Standard false – Varianzgewichtung)
     latency_ms:               # interne (unsichere Pfad) Latenz – kein Einfluss auf sichere Intervallgrenzen
       dist: trunc_normal
       mean: 20.0
