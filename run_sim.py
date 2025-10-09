@@ -63,6 +63,11 @@ def main():
     ap.add_argument("--fusion-mode", choices=["var_weight","rule_based"], default=None, help="Override fusion mode (default: config driven)")
     ap.add_argument("--export-secure-interval", action="store_true", help="Export secure interval metrics CSV (width, additive vs joint P99, bias %)")
     ap.add_argument("--export-covariance", action="store_true", help="Export empirische Kovarianz/Korrelation der secure Komponenten (validiert additive Annahme)")
+    # Adaptive interval / stateful fusion extensions
+    ap.add_argument("--interval-update-cadence-s", type=float, default=1.0, help="Adaptive Intervall-Aktualisierungscadence in s")
+    ap.add_argument("--no-adaptive-interval", action="store_true", help="Deaktiviert adaptive Intervallberechnung (Fallback global additive P99)")
+    ap.add_argument("--fusion-stats", action="store_true", help="Exportiert Fusionsmodusanteile & Switch Rate (fusion_mode_stats.csv, fusion_switch_rate.csv)")
+    ap.add_argument("--export-interval-bounds", action="store_true", help="Exportiert finale Intervallgrenzen je Sample (secure_interval_bounds.csv)")
     ap.add_argument("--convergence", action="store_true", help="Export Konvergenz-Traces (RMSE, P95, P99, ES95)")
     ap.add_argument("--stress", nargs="*", default=None, help="Stress scenario flags: balise_tail, odo_residual, heavy_map")
     ap.add_argument("--early-detect-validate", action="store_true", help="Validate Early-Detection impact (ΔP95) and log result")
@@ -322,7 +327,15 @@ def main():
 
     # Optional time-series run
     if args.time_series:
-        ts_res = simulate_time_series(cfg, rng, threshold_oos=args.oos_threshold, with_lateral=True)
+        ts_res = simulate_time_series(
+            cfg, rng,
+            threshold_oos=args.oos_threshold,
+            with_lateral=True,
+            adaptive_interval=not args.no_adaptive_interval,
+            interval_update_cadence_s=float(args.interval_update_cadence_s),
+            export_interval_bounds=args.export_interval_bounds,
+            blend_steps=cfg.sensors.get("fusion", {}).get("blend_steps", 5),
+        )
         data_map = {
             "t_s": ts_res.times,
             "rmse_long": ts_res.rmse,
@@ -342,6 +355,22 @@ def main():
             data_map["p95_2d"] = ts_res.p95_2d
         ts_df = pd.DataFrame(data_map)
         ts_df.to_csv(out_dir / "time_series_metrics.csv", index=False)
+        # Fusion mode shares & switch rate
+        if args.fusion_stats and ts_res.mode_share is not None:
+            stats_df = pd.DataFrame({
+                "t_s": ts_res.times[:len(ts_res.mode_share['midpoint'])],
+                "share_midpoint": ts_res.mode_share["midpoint"],
+                "share_unsafe": ts_res.mode_share["unsafe"],
+                "share_unsafe_clamped": ts_res.mode_share["unsafe_clamped"],
+            })
+            stats_df.to_csv(out_dir / "fusion_mode_stats.csv", index=False)
+            if ts_res.switch_rate is not None:
+                pd.DataFrame({"t_s": ts_res.times[:len(ts_res.switch_rate)], "switch_rate": ts_res.switch_rate}).to_csv(out_dir / "fusion_switch_rate.csv", index=False)
+        if args.export_interval_bounds and ts_res.interval_lower is not None and ts_res.interval_upper is not None:
+            pd.DataFrame({
+                "interval_lower": ts_res.interval_lower,
+                "interval_upper": ts_res.interval_upper,
+            }).to_csv(out_dir / "secure_interval_bounds.csv", index=False)
         if not args.no_plots:
             # Simple time plots
             import matplotlib.pyplot as plt
@@ -396,6 +425,39 @@ def main():
                 plt.title("Additive vs. Joint P99 Bias Verlauf")
                 plt.legend(); plt.grid(alpha=0.25, linestyle=":")
                 plt.tight_layout(); plt.savefig(fig_dir/"secure_interval_bias.png", dpi=150); plt.close()
+            # Fusion mode shares stacked area
+            if args.fusion_stats and ts_res.mode_share is not None:
+                plt.figure(figsize=(6.4,3.2))
+                T = ts_res.times[:len(ts_res.mode_share['midpoint'])]
+                plt.stackplot(T,
+                               ts_res.mode_share['midpoint'],
+                               ts_res.mode_share['unsafe'],
+                               ts_res.mode_share['unsafe_clamped'],
+                               labels=["midpoint","unsafe","unsafe_clamped"],
+                               colors=["#8da0cb","#66c2a5","#fc8d62"], alpha=0.9)
+                plt.xlabel("Zeit t [s]"); plt.ylabel("Anteil [-]")
+                plt.title("Fusionsmodusanteile über Zeit")
+                plt.legend(loc='upper right', fontsize=8)
+                plt.tight_layout(); plt.savefig(fig_dir/"fusion_mode_share.png", dpi=150); plt.close()
+            # Interval bounds plot longitudinal (sample subset median bounds)
+            if ts_res.interval_lower is not None and ts_res.interval_upper is not None:
+                # Show fused vs median lower/upper & midpoint
+                # For performance we only store last interval snapshot; create synthetic representation
+                plt.figure(figsize=(6.4,3.2))
+                # Reconstruct midpoint
+                midpoint = 0.5*(ts_res.interval_lower + ts_res.interval_upper)
+                # Plot histogram-like lines (since time dimension lost, treat as distribution snapshot)
+                import numpy as np
+                # Sort for envelope visualisation
+                ord_idx = np.argsort(midpoint)
+                plt.plot(midpoint[ord_idx], label="midpoint (sorted)", color="#1b9e77")
+                plt.plot(ts_res.interval_lower[ord_idx], label="lower", color="#d95f02", linestyle=":")
+                plt.plot(ts_res.interval_upper[ord_idx], label="upper", color="#7570b3", linestyle=":")
+                plt.ylabel("Fehlerraum [m]")
+                plt.xlabel("Sample (sortiert nach midpoint)")
+                plt.title("Asymmetrische Intervallgrenzen Snapshot")
+                plt.legend(fontsize=8)
+                plt.tight_layout(); plt.savefig(fig_dir/"fused_time_interval_bounds.png", dpi=150); plt.close()
 
     # OAT Sensitivity
     if args.oat:

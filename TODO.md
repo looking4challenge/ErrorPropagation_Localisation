@@ -43,6 +43,35 @@
   - [x] Latenz Early-Detection Placeholder (wenn aktiviert) neutral validieren (ΔP95 <= 0.5 mm) -> sonst deaktiviert lassen (Export early_detection_eval.json)
   - [x] Plot secure_interval_growth (Zeit-/Distanzmodell Integration Basis 1s Cadence)
   - [x] Unit-Test: secure_interval additive Bias > 0 (neu geschrieben, Mehrfach-Replikation + Zeitreihenprüfung)
+  - [ ] (NEU A) Asymmetrisches sicheres Intervall: Konzept ableiten (Speed-binning oder funktionale Skalierung) – Design-Dokument Abschnitt erstellen
+  - [x] (NEU A) Implementierung Funktion `compute_secure_interval_bounds(secure_components, speeds, method="adaptive")` → quantilbasiert speed-bins
+  - [x] (NEU D) Adaptive Aktualisierung: Intervallgrenzen in `simulate_time_series` alle `interval_update_cadence_s` (Default 1 s)
+  - [x] (NEU B) Qualitätsheuristik: Nutzung unsafe wenn verfügbar & innerhalb [lower,upper]
+  - [x] (NEU C) Zustandfulle 4-Regeln-Fusion: `RuleFusionState` + `rule_based_fusion_step` mit linearer Glättung
+  - [x] (NEU C) Midpoint = 0.5*(lower+upper) implementiert
+  - [x] (NEU A/D) Clamping für asymmetrische Grenzen (API vorbereitet)
+  - [x] Integration: Zeitreihen-Sim nutzt zustandsvolle Step-Fusion longitudinal
+  - [ ] Lateral Erweiterung: analoge Regeln mit eigener (vorerst symmetrischer) Intervallabschätzung (später asymmetrisch falls Datenbasis)
+  - [ ] Metrik-Export: Anteil Zeit in Modi (midpoint / unsafe / unsafe_clamped), Anzahl Transitionen, durchschnittliche Übergangsdauer → `results/fusion_mode_stats.csv`
+  - [x] Metrik-Export: Anteil Zeit in Modi + Switch Rate → fusion_mode_stats.csv / fusion_switch_rate.csv
+  - [x] Plot: Anteil Modi über Zeit (Stacked Area) → fusion_mode_share.png
+  - [x] Plot: Intervallgrenzen Snapshot (asym. vorbereitet) → fused_time_interval_bounds.png
+  - [ ] Performance-Check: Overhead adaptive Fusion (< +15% Runtime bei N=10k, 1h Horizont) – Messung & Log
+  - [ ] Fallback Konfiguration: Falls adaptive Quantile numerisch instabil (zu wenige Samples in Bin) → revert auf globale additive P99 Halbbreiten (Warnung ins Log)
+  - [ ] Tests: (1) Keine Sprunggrößen > max(|target-start|)/blend_steps + epsilon, (2) Clamping korrekt (`fused in [lower,upper]`), (3) Outage→Midpoint Übergang geglättet, (4) Quali-Heuristik schaltet korrekt bei künstlichem Ausreißer (injektion)
+    - [x] Teilimplementierung: Clamping, Asymmetrie Midpoint, Switch Count, Blend Monotonie (Basis) vorhanden (test_stateful_fusion.py)
+  - [x] Test: Asymmetrie Greift – künstliche Skalierung upper=2*lower erzeugt erwartete verschobene Midpoints
+  - [ ] decisions.log Einträge: A (Asymmetrie & Speed-abh.), B (Heuristik), C (linear blend), D (adaptive update cadence)
+  - [ ] Dokumentation: Abschnitt „Adaptive asymmetrische sichere Intervallbestimmung“ (Formeln, Parameter, Limitierungen) im Bericht
+  - [ ] CLI Erweiterung: `--interval-update-cadence-s` & `--fusion-stats` & `--no-adaptive-interval` (Fallback Flag)
+  - [x] CLI Erweiterung umgesetzt (inkl. --export-interval-bounds)
+  - [ ] Config Erweiterung: `fusion: { interval: { adaptive: true, update_cadence_s: 1.0, quantile_low_pct: 1.0, quantile_high_pct: 99.0, min_bin_fraction: 0.05 } }`
+  - [ ] Robustheit: Handling leerer Geschwindigkeits-Bins → Merge mit Nachbar oder global quantiles
+  - [ ] Logging: Warnungen bei >20% Bins fallback / <min_bin_fraction
+  - [ ] Refactoring Alt: Entferne statische `rule_based_fusion` (epoch) nach Integration (oder markiere deprecated)
+  - [ ] Technische Schuld: Parameterisierung blend_steps testbar (Expose via config + CLI override)
+  - [ ] Optional: Exponentielle Glättungsvariante (α) evaluieren – nur dokumentieren, nicht aktivieren (Vergleich Stabilität)
+  - [ ] Optional: Export Intervall-Bounds Zeitreihe (`secure_interval_bounds.csv`) für Audit
 
 ## Phase 5 - Sensitivität & Validierung
 
@@ -79,6 +108,8 @@
 - [ ] Technische Schuld: Refactoring fuse_pair Nutzung entfernen wenn rule_based aktiv (Dead Code vermeiden)
 - [ ] Logging Anteil unsafe Nutzung (Prozentsatz Samples) + secure_only Baseline Kennzahl exportieren
 - [ ] Optional: Unit-Test für Secure-Intervallbreite (monoton wachsend mit Distanz, obere Schranke Stress-Szenario)
+- [ ] (NEU) Wartung adaptive Intervall: Regressionstest bei Änderungen an Sensorverteilungen (Snapshot quantile bias < 5%-Pkt Änderung)
+- [ ] (NEU) Mode Share Drift Alarm: Warnung falls Anteil unsafe_clamped > definierter Schwellwert (z.B. 10%)
 
 ## Neue / Querschnittliche Aufgaben
 

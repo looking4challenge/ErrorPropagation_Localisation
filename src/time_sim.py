@@ -25,7 +25,12 @@ from .sim_sensors import (
     simulate_map_error,
 )
 from .distributions import registry
-from .fusion import fuse_pair
+from .fusion import (
+    fuse_pair,
+    compute_secure_interval_bounds,
+    RuleFusionState,
+    rule_based_fusion_step,
+)
 
 
 @dataclass
@@ -45,6 +50,11 @@ class TimeSeriesResult:
     si_additive_p99: np.ndarray | None = None
     si_joint_p99: np.ndarray | None = None
     si_bias_pct: np.ndarray | None = None
+    # Adaptive fusion statistics
+    mode_share: Dict[str, np.ndarray] | None = None  # per time step shares {midpoint, unsafe, unsafe_clamped}
+    switch_rate: np.ndarray | None = None           # fraction of samples switching mode per step
+    interval_lower: np.ndarray | None = None        # last-step interval lower (per sample) if exported
+    interval_upper: np.ndarray | None = None        # last-step interval upper (per sample)
 
 
 def _prepare_static_components(cfg: Config, n: int, rng: np.random.Generator):
@@ -66,7 +76,9 @@ def _prepare_static_components(cfg: Config, n: int, rng: np.random.Generator):
     return map_err_long, map_err_lat, gnss_bias_long, gnss_bias_lat, imu_bias
 
 
-def simulate_time_series(cfg: Config, rng: np.random.Generator, threshold_oos: float = 0.2, with_lateral: bool = True) -> TimeSeriesResult:
+def simulate_time_series(cfg: Config, rng: np.random.Generator, threshold_oos: float = 0.2, with_lateral: bool = True,
+                         adaptive_interval: bool = True, interval_update_cadence_s: float = 1.0,
+                         export_interval_bounds: bool = False, blend_steps: int | None = None) -> TimeSeriesResult:
     sim = cfg.sim
     dt = float(sim.get("dt_s", 0.1))
     horizon = float(sim.get("time_horizon_s", 3600.0))
@@ -127,6 +139,25 @@ def simulate_time_series(cfg: Config, rng: np.random.Generator, threshold_oos: f
     si_joint_list = []
     si_time_list = []
 
+    # Fusion config
+    fusion_cfg = cfg.sensors.get("fusion", {})
+    if blend_steps is None:
+        blend_steps = int(fusion_cfg.get("blend_steps", 5))
+    update_steps = max(1, int(round(interval_update_cadence_s / dt)))
+    use_rule_based = fusion_cfg.get("rule_based", False)
+
+    # Stateful fusion initialisation (longitudinal only for now)
+    state = RuleFusionState(fused=np.zeros(n), mode=np.zeros(n, dtype=int), blend_left=np.zeros(n, dtype=int))
+    # Interval placeholders
+    lower = None
+    upper = None
+
+    # Mode stats arrays
+    mode_mid = []
+    mode_uns = []
+    mode_uns_cl = []
+    switch_rate = []
+
     # Loop
     for k in range(n_steps):
         t = (k + 1) * dt  # time at end of step
@@ -174,18 +205,43 @@ def simulate_time_series(cfg: Config, rng: np.random.Generator, threshold_oos: f
         if with_lateral and gnss_current_lat is not None and unsafe_lat is not None:
             unsafe_lat = gnss_current_lat  # lateral IMU bias neglected
 
-        # Fusion (variance inverse weighting)
-        var_sec = np.var(secure, ddof=1)
-        var_uns = np.var(unsafe, ddof=1)
-        fused, _ = fuse_pair(secure, np.full(n, var_sec), unsafe, np.full(n, var_uns))
+        # Adaptive interval update if rule-based active
+        if use_rule_based and adaptive_interval and (k % update_steps == 0):
+            interval_cfg = fusion_cfg.get("interval", {})
+            lower, upper, _meta_int = compute_secure_interval_bounds(
+                secure, speeds,
+                method="adaptive",
+                quantile_low_pct=float(interval_cfg.get("quantile_low_pct", 1.0)),
+                quantile_high_pct=float(interval_cfg.get("quantile_high_pct", 99.0)),
+                speed_bin_width=float(interval_cfg.get("speed_bin_width", 5.0)),
+                min_bin_fraction=float(interval_cfg.get("min_bin_fraction", 0.05))
+            )
+        if use_rule_based:
+            # Fallback: if not yet computed (first steps) use symmetric additive P99
+            if lower is None or upper is None:
+                q = float(np.percentile(np.abs(secure), 99))
+                lower = -np.full(n, q)
+                upper = np.full(n, q)
+            # Outage mask already known
+            outage_mask = outage
+            fused, state, meta_f = rule_based_fusion_step(secure, unsafe, lower, upper, outage_mask, state, blend_steps=blend_steps)
+            mode_mid.append(meta_f["n_midpoint"]/n)
+            mode_uns.append(meta_f["n_unsafe"]/n)
+            mode_uns_cl.append(meta_f["n_unsafe_clamped"]/n)
+            switch_rate.append(meta_f["n_switch"]/n)
+        else:
+            # Legacy variance weighting
+            var_sec = np.var(secure, ddof=1)
+            var_uns = np.var(unsafe, ddof=1)
+            fused, _ = fuse_pair(secure, np.full(n, var_sec), unsafe, np.full(n, var_uns))
         if with_lateral and last_balise_lat_error is not None and secure_lat is not None and unsafe_lat is not None:
             var_sec_lat = np.var(secure_lat, ddof=1)
             var_uns_lat = np.var(unsafe_lat, ddof=1)
             fused_lat, _ = fuse_pair(secure_lat, np.full(n, var_sec_lat), unsafe_lat, np.full(n, var_uns_lat))
 
         # Metrics
-        rmse_t[k] = np.sqrt(np.mean(fused ** 2))
-        p95_t[k] = np.percentile(fused, 95)
+    rmse_t[k] = np.sqrt(np.mean(fused ** 2))
+    p95_t[k] = np.percentile(fused, 95)
         if with_lateral and last_balise_lat_error is not None and fused_lat is not None:
             if rmse_lat_t is not None and p95_lat_t is not None:
                 rmse_lat_t[k] = np.sqrt(np.mean(fused_lat ** 2))
@@ -217,6 +273,15 @@ def simulate_time_series(cfg: Config, rng: np.random.Generator, threshold_oos: f
     si_joint = np.array(si_joint_list) if si_joint_list else None
     si_bias = 100.0 * (si_add / si_joint - 1.0) if si_add is not None and si_joint is not None else None
 
+    mode_share = None
+    switch_arr = None
+    if use_rule_based:
+        mode_share = {
+            "midpoint": np.array(mode_mid),
+            "unsafe": np.array(mode_uns),
+            "unsafe_clamped": np.array(mode_uns_cl),
+        }
+        switch_arr = np.array(switch_rate)
     return TimeSeriesResult(
         times=times,
         rmse=rmse_t,
@@ -232,6 +297,10 @@ def simulate_time_series(cfg: Config, rng: np.random.Generator, threshold_oos: f
         si_additive_p99=si_add,
         si_joint_p99=si_joint,
         si_bias_pct=si_bias,
+        mode_share=mode_share,
+        switch_rate=switch_arr,
+        interval_lower=lower if (export_interval_bounds and lower is not None) else None,
+        interval_upper=upper if (export_interval_bounds and upper is not None) else None,
     )
 
 
