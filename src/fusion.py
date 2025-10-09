@@ -137,7 +137,7 @@ def compute_secure_interval_bounds(
   n = secure.shape[0]
   if method != "adaptive":
     q = float(np.percentile(np.abs(secure), quantile_high_pct))
-    return -np.full(n, q), np.full(n, q), {"fallback": True, "global_q": q, "used_bins": 0}
+    return -np.full(n, q), np.full(n, q), {"fallback": True, "global_q": q, "used_bins": 0, "n_bins": 0, "fallback_escalated": False}
 
   # Speed bins
   vmax = max(1e-9, float(np.max(speeds)))
@@ -145,39 +145,51 @@ def compute_secure_interval_bounds(
   edges = np.linspace(0.0, n_bins * speed_bin_width, n_bins + 1)
   inds = np.clip(np.digitize(speeds, edges) - 1, 0, n_bins - 1)
 
-  lower = np.zeros(n)
-  upper = np.zeros(n)
+  # Global fallback prepared (also initialises arrays to safe values for empty bins)
+  q_global = float(np.percentile(np.abs(secure), quantile_high_pct))
+  lower = -np.full(n, q_global)
+  upper = np.full(n, q_global)
+  lower_global = -q_global
+  upper_global = q_global
+
   fallback = False
   used_bins = 0
   min_bin_size = int(math.ceil(min_bin_fraction * n))
 
-  # Precompute global fallback symmetric
-  q_global = float(np.percentile(np.abs(secure), quantile_high_pct))
-  lower_global = -q_global
-  upper_global = q_global
-
   for b in range(n_bins):
     mask = inds == b
-    if not np.any(mask):
+    if not np.any(mask):  # already global fallback values set
       continue
     if mask.sum() < min_bin_size:
-      # Mark fallback for this bin
-      lower[mask] = lower_global
-      upper[mask] = upper_global
+      # keep global fallback for this bin
       fallback = True
       continue
     seg = secure[mask]
-    # For potential asymmetry, compute separate tails; presently distribution ~ symmetric.
     q_low = float(np.percentile(seg, quantile_low_pct))
     q_high = float(np.percentile(seg, quantile_high_pct))
-    # Enforce ordering; if numeric issues collapse to symmetric abs quantile
-    if q_low > q_high:
-      q_low, q_high = -q_high, q_high
+    if q_low > q_high:  # numeric safeguard
+      q_low, q_high = -abs(q_high), abs(q_high)
     lower[mask] = q_low
     upper[mask] = q_high
     used_bins += 1
 
-  meta = {"fallback": fallback, "global_q": q_global, "used_bins": used_bins, "n_bins": n_bins}
+  # Escalate to full global fallback if too many bins unstable (>20% fallback bins)
+  fallback_bins = n_bins - used_bins
+  fallback_escalated = False
+  if n_bins > 0 and (fallback_bins / n_bins) > 0.20:
+    lower[:] = lower_global
+    upper[:] = upper_global
+    fallback = True
+    fallback_escalated = True
+
+  meta = {
+    "fallback": fallback,
+    "global_q": q_global,
+    "used_bins": used_bins,
+    "n_bins": n_bins,
+    "fallback_escalated": fallback_escalated,
+    "fallback_bins": fallback_bins,
+  }
   return lower, upper, meta
 
 
@@ -189,6 +201,7 @@ def rule_based_fusion_step(
   outage: np.ndarray,
   state: RuleFusionState,
   blend_steps: int = 5,
+  outage_fallback: str = "midpoint",
 ) -> Tuple[np.ndarray, RuleFusionState, Dict[str, Any]]:
   """One time-step update for rule-based fusion (stateful).
 
@@ -218,8 +231,12 @@ def rule_based_fusion_step(
   mode = np.empty(n, dtype=int)
   # Unsafe accepted
   mode[unsafe_in_bounds] = MODE_UNSAFE
-  # Outage -> midpoint
-  mode[outage] = MODE_MIDPOINT
+  # Outage handling selectable
+  if outage_fallback == "secure":
+    # treat outage samples like unsafe_clamped (secure path but possibly clamped)
+    mode[outage] = MODE_UNSAFE_CLAMPED
+  else:  # default midpoint
+    mode[outage] = MODE_MIDPOINT
   # Remaining (available but out-of-bounds) -> unsafe_clamped (secure clamped)
   mask_remaining = ~(unsafe_in_bounds | outage)
   mode[mask_remaining] = MODE_UNSAFE_CLAMPED

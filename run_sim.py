@@ -370,6 +370,16 @@ def main():
             stats_df.to_csv(out_dir / "fusion_mode_stats.csv", index=False)
             if ts_res.switch_rate is not None:
                 pd.DataFrame({"t_s": ts_res.times[:len(ts_res.switch_rate)], "switch_rate": ts_res.switch_rate}).to_csv(out_dir / "fusion_switch_rate.csv", index=False)
+            # Derived average mode residence time (approx) = dt / switch_rate where switch_rate>0 else NaN
+            if ts_res.switch_rate is not None and len(ts_res.switch_rate) > 0:
+                import numpy as _np
+                dt_local = float(cfg.sim.get("dt_s", 0.1))
+                residence = dt_local / ts_res.switch_rate
+                # Replace inf/NaN (zero switch rate) with NaN explicitly
+                bad = ~_np.isfinite(residence)
+                if bad.any():
+                    residence[bad] = _np.nan
+                pd.DataFrame({"t_s": ts_res.times[:len(residence)], "residence_time_est_s": residence}).to_csv(out_dir / "fusion_mode_residence_est.csv", index=False)
         if args.export_interval_bounds and ts_res.interval_lower is not None and ts_res.interval_upper is not None:
             pd.DataFrame({
                 "interval_lower": ts_res.interval_lower,

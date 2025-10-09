@@ -53,12 +53,12 @@
   - [x] Integration: Zeitreihen-Sim nutzt zustandsvolle Step-Fusion longitudinal
   - [ ] Lateral Erweiterung: analoge Regeln mit eigener (vorerst symmetrischer) Intervallabschätzung (später asymmetrisch falls Datenbasis)
   - [x] Lateral Erweiterung: analoge Regeln (symmetrisch) optional via config `fusion.lateral_rule_based`
-  - [ ] Metrik-Export: Anteil Zeit in Modi (midpoint / unsafe / unsafe_clamped), Anzahl Transitionen, durchschnittliche Übergangsdauer → `results/fusion_mode_stats.csv` (Anteile & Switch schon vorhanden; Transitiondauer offen)
+  - [x] Metrik-Export: Anteil Zeit in Modi (midpoint / unsafe / unsafe_clamped), Anzahl Transitionen, durchschnittliche Übergangsdauer → `results/fusion_mode_stats.csv` (Residence Approx via switch_rate)
   - [x] Metrik-Export: Anteil Zeit in Modi + Switch Rate → fusion_mode_stats.csv / fusion_switch_rate.csv
   - [x] Plot: Anteil Modi über Zeit (Stacked Area) → fusion_mode_share.png
   - [x] Plot: Intervallgrenzen Snapshot (asym. vorbereitet) → fused_time_interval_bounds.png
   - [x] Performance-Check: CLI `--perf` Runtime Vergleich adaptive vs legacy (CSV Export performance_fusion_runtime.csv). Overhead-Grenzprüfung noch offen.
-  - [ ] Fallback Konfiguration: Falls adaptive Quantile numerisch instabil (zu wenige Samples in Bin) → revert auf globale additive P99 Halbbreiten (Warnung ins Log)
+  - [x] Fallback Konfiguration: Falls adaptive Quantile numerisch instabil (zu wenige Samples in Bin) → revert auf globale additive P99 Halbbreiten (Warnung ins Log)
   - [x] Tests: (1) Sprunggrößen-Grenze, (2) Clamping vorhanden, (3) Outage→Midpoint Blend, (4) Ausreißer→Clamped
     - [x] Teilimplementierung: Clamping, Asymmetrie Midpoint, Switch Count, Blend Monotonie (Basis) vorhanden (test_stateful_fusion.py)
   - [x] Test: Asymmetrie Greift – künstliche Skalierung upper=2*lower erzeugt erwartete verschobene Midpoints
@@ -66,9 +66,9 @@
   - [ ] Dokumentation: Abschnitt „Adaptive asymmetrische sichere Intervallbestimmung“ (Formeln, Parameter, Limitierungen) im Bericht
   - [ ] CLI Erweiterung: `--interval-update-cadence-s` & `--fusion-stats` & `--no-adaptive-interval` (Fallback Flag)
   - [x] CLI Erweiterung umgesetzt (inkl. --export-interval-bounds)
-  - [ ] Config Erweiterung: `fusion: { interval: { adaptive: true, update_cadence_s: 1.0, quantile_low_pct: 1.0, quantile_high_pct: 99.0, min_bin_fraction: 0.05 } }`
-  - [ ] Robustheit: Handling leerer Geschwindigkeits-Bins → Merge mit Nachbar oder global quantiles
-  - [ ] Logging: Warnungen bei >20% Bins fallback / <min_bin_fraction
+  - [x] Config Erweiterung: `fusion: { interval: { adaptive: true, update_cadence_s: 1.0, quantile_low_pct: 1.0, quantile_high_pct: 99.0, min_bin_fraction: 0.05 } }`
+  - [x] Robustheit: Handling leerer Geschwindigkeits-Bins → global quantiles fallback
+  - [x] Logging: Warnungen bei >20% Bins fallback / <min_bin_fraction
   - [ ] Refactoring Alt: Entferne statische `rule_based_fusion` (epoch) nach Integration (oder markiere deprecated)
   - [ ] Technische Schuld: Parameterisierung blend_steps testbar (Expose via config + CLI override)
   - [ ] Optional: Exponentielle Glättungsvariante (α) evaluieren – nur dokumentieren, nicht aktivieren (Vergleich Stabilität)

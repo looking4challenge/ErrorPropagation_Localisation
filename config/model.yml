@@ -160,6 +160,7 @@ sensors:
     filter_proxy: rule_based_4rules
     blend_steps: 5            # sanfte Überblendung bei (Re-)Verfügbarkeit
     lateral_rule_based: false  # Optional: analoge regelbasierte Fusion lateral (Standard false – Varianzgewichtung)
+    outage_fallback: midpoint  # Verhalten bei unsafe Outage: midpoint | secure (secure = clamped sicherer Pfad)
     latency_ms:               # interne (unsichere Pfad) Latenz – kein Einfluss auf sichere Intervallgrenzen
       dist: trunc_normal
       mean: 20.0
@@ -174,6 +175,7 @@ sensors:
       quantile_high_pct: 99.0
       speed_bin_width: 5.0
       min_bin_fraction: 0.05
+      # Robustheit: Falls >20% Speed-Bins unter Mindeststichprobengröße → globaler Fallback (symmetrisch ±Q99 abs secure)
 
 secure_interval:
   method: additive_p99        # Symmetrisches Intervall ±P99_sum (konservativ)
