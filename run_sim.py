@@ -85,11 +85,13 @@ def main():
     ap.add_argument("--exceedance-threshold", type=float, default=None, help="Threshold T for exceedance ΔP(|e|>T) (default: use p95 of fused if not set)")
     ap.add_argument("--exceedance", action="store_true", help="Enable exceedance sensitivity ΔP(|e|>T)")
     # Sobol & ES95 Erweiterung
-    ap.add_argument("--sobol", action="store_true", help="Run Sobol First/Total order indices (rmse_long, rmse_2d, p95_long)")
+    ap.add_argument("--sobol", action="store_true", help="Run Sobol First/Total order indices (default: rmse_long, rmse_2d, p95_long, p95_2d)")
     ap.add_argument("--sobol-base", type=int, default=750, help="Base sample size for Saltelli (total eval ~ (2k+2)*N)")
+    ap.add_argument("--sobol-auto-base", action="store_true", help="Automatische Heuristik für n_base abhängig von Parameteranzahl k")
     ap.add_argument("--sobol-params", nargs="*", default=None, help="Explicit parameter paths for Sobol (fallback: OAT default list)")
     ap.add_argument("--sobol-delta-pct", type=float, default=10.0, help="Relative variation window ±pct for Sobol bounds")
     ap.add_argument("--sobol-mc-n", type=int, default=800, help="Inner MC sample per Sobol evaluation (fused error resampling)")
+    ap.add_argument("--sobol-metrics", nargs="*", default=None, help="Subset of metrics for Sobol (choices: rmse_long rmse_2d p95_long p95_2d)")
     ap.add_argument("--es95", action="store_true", help="Compute ES95 conditioning sensitivity (High-Low ΔES)")
     args = ap.parse_args()
 
@@ -711,18 +713,112 @@ def main():
     # Sobol Analyse (am Ende – teurer Schritt)
     if args.sobol:
         sobol_params = args.sobol_params if args.sobol_params else default_oat_params(cfg)
+        # Auto-Heuristik: Ziel ~ 1-2% typische ST Konf-Std für Top-Parameter bei moderatem k
+        if args.sobol_auto_base:
+            k = len(sobol_params)
+            # Staffelung: kleiner k => höhere Basis, großer k => gedeckelt für Runtime
+            if k <= 6:
+                n_base = 1200
+            elif k <= 10:
+                n_base = 900
+            elif k <= 16:
+                n_base = 750
+            else:
+                n_base = 600
+        else:
+            n_base = int(args.sobol_base)
         try:
+            sobol_metrics = ["rmse_long", "rmse_2d", "p95_long", "p95_2d"] if (args.sobol_metrics is None or len(args.sobol_metrics) == 0) else args.sobol_metrics
             sobol_res = sobol_sensitivity(
                 cfg,
                 sobol_params,
-                n_base=int(args.sobol_base),
+                n_base=n_base,
                 mc_n=int(args.sobol_mc_n),
                 rng=np.random.default_rng(get_seed(cfg) + 12345),
-                metrics=["rmse_long", "rmse_2d", "p95_long"],
+                metrics=sobol_metrics,
                 delta_pct=float(args.sobol_delta_pct),
             )
             for mname, rows in sobol_res.items():
                 pd.DataFrame(rows).to_csv(out_dir / f"sensitivity_sobol_{mname}.csv", index=False)
+            # Konsolidiertes Ranking: Mittelwert Rang(ST) + Sekundärkriterium Rang(S1)
+            rank_rows = []
+            # Sammle alle Parameter
+            all_params = sorted({r['param'] for rows in sobol_res.values() for r in rows})
+            # Baue Lookup pro Metric
+            metric_lookup = {m: {r['param']: r for r in rows} for m, rows in sobol_res.items()}
+            for p in all_params:
+                st_vals = []
+                s1_vals = []
+                coverage = 0
+                for m, rows in sobol_res.items():
+                    rmap = metric_lookup[m]
+                    if p in rmap:
+                        coverage += 1
+                        st_vals.append(rmap[p]['ST'])
+                        s1_vals.append(rmap[p]['S1'])
+                if coverage == 0:
+                    continue
+                mean_st = float(np.nanmean(st_vals)) if st_vals else float('nan')
+                mean_s1 = float(np.nanmean(s1_vals)) if s1_vals else float('nan')
+                rank_rows.append({
+                    'param': p,
+                    'mean_ST': mean_st,
+                    'mean_S1': mean_s1,
+                    'metrics_covered': coverage,
+                    'k_params': len(sobol_params),
+                    'n_base_used': n_base,
+                })
+            if rank_rows:
+                # Ranking nach mean_ST absteigend
+                rank_rows.sort(key=lambda d: (float('-inf') if np.isnan(d['mean_ST']) else -d['mean_ST']))
+                total_mean_st = sum(r['mean_ST'] for r in rank_rows if not np.isnan(r['mean_ST']))
+                for r in rank_rows:
+                    r['share_mean_ST'] = (r['mean_ST'] / total_mean_st) if (total_mean_st > 0 and not np.isnan(r['mean_ST'])) else float('nan')
+                pd.DataFrame(rank_rows).to_csv(out_dir / "sensitivity_sobol_consolidated.csv", index=False)
+                # Optionale Refinement Runde
+                if getattr(args, 'sobol_refine_top_n', 0) > 0:
+                    top_n = max(1, min(args.sobol_refine_top_n, len(rank_rows)))
+                    refined_params = [r['param'] for r in rank_rows[:top_n]]
+                    base_ref = int(args.sobol_refine_base) if getattr(args, 'sobol_refine_base', None) is not None else int(max(50, n_base * getattr(args,'sobol_refine_scale',2.0)))
+                    try:
+                        sobol_res_ref = sobol_sensitivity(
+                            cfg,
+                            refined_params,
+                            n_base=base_ref,
+                            mc_n=int(args.sobol_mc_n),
+                            rng=np.random.default_rng(get_seed(cfg) + 54321),
+                            metrics=sobol_metrics,
+                            delta_pct=float(args.sobol_delta_pct),
+                        )
+                        for mname, rows in sobol_res_ref.items():
+                            pd.DataFrame(rows).to_csv(out_dir / f"sensitivity_sobol_refined_{mname}.csv", index=False)
+                        ref_rank_rows = []
+                        all_params_ref = sorted({r['param'] for rows in sobol_res_ref.values() for r in rows})
+                        ref_lookup = {m: {r['param']: r for r in rows} for m, rows in sobol_res_ref.items()}
+                        for p in all_params_ref:
+                            st_vals = [ref_lookup[m][p]['ST'] for m in sobol_res_ref if p in ref_lookup[m]]
+                            s1_vals = [ref_lookup[m][p]['S1'] for m in sobol_res_ref if p in ref_lookup[m]]
+                            mean_st = float(np.nanmean(st_vals)) if st_vals else float('nan')
+                            mean_s1 = float(np.nanmean(s1_vals)) if s1_vals else float('nan')
+                            ref_rank_rows.append({'param': p, 'mean_ST': mean_st, 'mean_S1': mean_s1, 'metrics_covered': len(sobol_res_ref), 'n_base_used': base_ref, 'refinement': True})
+                        if ref_rank_rows:
+                            total_mean_st_ref = sum(r['mean_ST'] for r in ref_rank_rows if not np.isnan(r['mean_ST']))
+                            for r in ref_rank_rows:
+                                r['share_mean_ST'] = (r['mean_ST'] / total_mean_st_ref) if (total_mean_st_ref > 0 and not np.isnan(r['mean_ST'])) else float('nan')
+                            ref_rank_rows.sort(key=lambda d: (float('-inf') if np.isnan(d['mean_ST']) else -d['mean_ST']))
+                            pd.DataFrame(ref_rank_rows).to_csv(out_dir / "sensitivity_sobol_consolidated_refined.csv", index=False)
+                            if not args.no_plots:
+                                import matplotlib.pyplot as plt
+                                plt.figure(figsize=(6, max(2.0, 0.5 * len(ref_rank_rows))))
+                                y = np.arange(len(ref_rank_rows))
+                                plt.barh(y, [r['mean_ST'] for r in ref_rank_rows], color='#08519c')
+                                plt.yticks(y, [r['param'] for r in ref_rank_rows])
+                                plt.xlabel('mean_ST (refined)')
+                                plt.title('Sobol Refined Top-N')
+                                plt.grid(alpha=0.25, linestyle=':')
+                                plt.tight_layout(); plt.savefig(Path(args.figdir)/'sensitivity_sobol_refined_meanST.png', dpi=150); plt.close()
+                    except Exception as e_ref:
+                        print(f"Sobol Refinement Fehler (ignoriert): {e_ref}")
             if not args.no_plots:
                 import matplotlib.pyplot as plt
                 for mname, rows in sobol_res.items():

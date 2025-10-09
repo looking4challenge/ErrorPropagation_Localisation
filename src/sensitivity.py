@@ -362,8 +362,9 @@ def sobol_sensitivity(cfg: Config, param_paths: Sequence[str], n_base: int, mc_n
 
     Approach: Treat each parameter as Uniform[L, U] with L=val*(1-delta_pct/100), U=val*(1+delta_pct/100). If val==0 use ±delta_abs where
     delta_abs = (delta_pct/100)*fallback_scale (fallback_scale = 1.0 or 1e-3 if small).
-    metrics: subset of {"rmse_long", "rmse_2d", "p95_long"}.
-    Returns dict mapping metric name -> DataFrame-like dict with columns: param, S1, S1_conf, ST, ST_conf.
+    metrics: subset of {"rmse_long", "rmse_2d", "p95_long", "p95_2d"}.
+    Added p95_2d (radial 2D P95) to capture joint tail behaviour beyond longitudinal only.
+    Returns dict mapping metric name -> list[dict]: param, S1, S1_conf (boot std), ST, ST_conf, estimator.
     """
     sample_fn = None  # type: ignore
     sobol_analyze_mod = None  # type: ignore
@@ -449,7 +450,7 @@ def sobol_sensitivity(cfg: Config, param_paths: Sequence[str], n_base: int, mc_n
         rows.sort(key=lambda r: (float('nan') if math.isnan(r['ST']) else -r['ST']))
         return rows
     if metrics is None:
-        metrics = ["rmse_long", "rmse_2d", "p95_long"]
+        metrics = ["rmse_long", "rmse_2d", "p95_long", "p95_2d"]
     # Build problem definition
     bounds = []
     base_vals = []
@@ -494,6 +495,8 @@ def sobol_sensitivity(cfg: Config, param_paths: Sequence[str], n_base: int, mc_n
             metric_vals['rmse_2d'].append(rmse(fused_2d))
         if 'p95_long' in metric_vals:
             metric_vals['p95_long'].append(float(np.percentile(np.abs(fused_long), 95)))
+        if 'p95_2d' in metric_vals:
+            metric_vals['p95_2d'].append(float(np.percentile(np.abs(fused_2d), 95)))
     # Restore original parameters
     for p, v in zip(param_paths, base_vals):
         _set_param(cfg, p, v)

@@ -26,12 +26,15 @@ def test_sobol_indices_basic():
     assert len(params) >= 2, "Need at least two params for Sobol test"
     rng = np.random.default_rng(get_seed(cfg) + 2025)
     try:
-        res = sobol_sensitivity(cfg, params, n_base=16, mc_n=120, rng=rng, metrics=["rmse_long"], delta_pct=5.0)
+        res = sobol_sensitivity(cfg, params, n_base=16, mc_n=120, rng=rng, metrics=["rmse_long", "p95_2d"], delta_pct=5.0)
     except Exception as e:
         # Skip if SALib / numpy incompat issue (ptp removal) or SALib not installed
         pytest.skip(f"Sobol skipped due to runtime error: {e}")
     rows = res.get("rmse_long", [])
     assert rows, "Sobol result rows empty"
+    # If p95_2d present ensure structure
+    if "p95_2d" in res:
+        assert all('param' in r and 'S1' in r for r in res['p95_2d'])
     for r in rows:
         assert -0.1 <= r['S1'] <= 1.1, f"S1 out of range: {r}"
         # Allow slight >1 due to finite sample stochasticity of Jansen estimator
