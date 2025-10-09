@@ -1,0 +1,14 @@
+{
+  "component": "gnss_open",
+  "metrics": {
+    "mean": 0.0007170350504274875,
+    "std": 0.4936492155625776,
+    "rmse": 0.4936250532641239,
+    "p50": -0.0,
+    "p90": 0.6295748883503913,
+    "p95": 0.8191335520244046,
+    "p99": 1.1806881236777598
+  },
+  "timestamp_utc": "2025-10-09T13:21:09.695015+00:00",
+  "config": "C:\\Repos\\ErrorPropagation_Localisation\\config\\scenario_bad_weather.yml"
+}

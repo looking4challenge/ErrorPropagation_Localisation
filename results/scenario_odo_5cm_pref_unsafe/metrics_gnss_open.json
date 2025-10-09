@@ -1,0 +1,14 @@
+{
+  "component": "gnss_open",
+  "metrics": {
+    "mean": 0.00046291528738407026,
+    "std": 0.38611344375576295,
+    "rmse": 0.3860944151115801,
+    "p50": -0.0,
+    "p90": 0.4911822469226756,
+    "p95": 0.6391924990959716,
+    "p99": 0.9231086292759138
+  },
+  "timestamp_utc": "2025-10-09T13:21:23.069704+00:00",
+  "config": "C:\\Repos\\ErrorPropagation_Localisation\\config\\scenario_odo_5cm.yml"
+}

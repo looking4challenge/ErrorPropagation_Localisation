@@ -1,0 +1,14 @@
+{
+  "component": "gnss_urban",
+  "metrics": {
+    "mean": 0.05296639105076944,
+    "std": 0.9465045123931598,
+    "rmse": 0.947938101081689,
+    "p50": 0.0,
+    "p90": 1.2837113666406537,
+    "p95": 1.642149552939929,
+    "p99": 2.3063436152640016
+  },
+  "timestamp_utc": "2025-10-09T13:21:23.069704+00:00",
+  "config": "C:\\Repos\\ErrorPropagation_Localisation\\config\\scenario_odo_5cm.yml"
+}

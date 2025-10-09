@@ -35,6 +35,7 @@
   - [x] Verbesserte 2D Fusion (separate Gewichtung longitudinal/lateral im Zeitmodell)
   - [x] Realistischere Lateral-Unsicherer Pfad (eigene GNSS Quer Noise/Bias Parametrisierung implementiert)
   - [x] Regelbasierte 4-Regeln-Fusion implementieren (Clamping + Blend) anstelle rein varianzgewichteter Surrogat-Fusion
+  - [ ] (Fix Follow-up) Lateral rule_based Anpassung für Outage (Fallback lateral_secure statt 0)
   - [x] CLI-Schalter --fusion-mode (rule_based|var_weight) hinzufügen
   - [x] Secure-Intervallbreite explizit berechnen (additive P99) und exportieren (secure_interval_metrics.csv)
   - [x] Quantifizierung Additive-P99 Überschätzung: Vergleich MC-Faltung vs. additive Summation (Bias %, ΔP99)
@@ -75,8 +76,9 @@
 - [ ] decisions.log pflegen
 - [ ] Seeds & Reproduzierbarkeit sicherstellen
  - [ ] Konsistenz model.yml ↔ Systemübersicht prüfen bei jeder strukturellen Änderung (Automatische Checkliste)
- - [ ] Technische Schuld: Refactoring fuse_pair Nutzung entfernen wenn rule_based aktiv (Dead Code vermeiden)
- - [ ] Optional: Unit-Test für Secure-Intervallbreite (monoton wachsend mit Distanz, obere Schranke Stress-Szenario)
+- [ ] Technische Schuld: Refactoring fuse_pair Nutzung entfernen wenn rule_based aktiv (Dead Code vermeiden)
+- [ ] Logging Anteil unsafe Nutzung (Prozentsatz Samples) + secure_only Baseline Kennzahl exportieren
+- [ ] Optional: Unit-Test für Secure-Intervallbreite (monoton wachsend mit Distanz, obere Schranke Stress-Szenario)
 
 ## Neue / Querschnittliche Aufgaben
 
