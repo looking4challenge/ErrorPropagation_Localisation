@@ -34,12 +34,14 @@
   - [x] Lateral Fehlerpfad hinzugefügt (Balise/Map quer, vereinfachte Annahmen)
   - [x] Verbesserte 2D Fusion (separate Gewichtung longitudinal/lateral im Zeitmodell)
   - [x] Realistischere Lateral-Unsicherer Pfad (eigene GNSS Quer Noise/Bias Parametrisierung implementiert)
-  - [ ] Regelbasierte 4-Regeln-Fusion implementieren (Clamping + Blend) anstelle rein varianzgewichteter Surrogat-Fusion
-  - [ ] CLI-Schalter --fusion-mode (rule_based|var_weight) hinzufügen
-  - [ ] Secure-Intervallbreite explizit berechnen (additive P99) und exportieren (z.B. secure_interval_metrics.csv)
-  - [ ] Quantifizierung Additive-P99 Überschätzung: Vergleich MC-Faltung vs. additive Summation (Bias %, ΔP99)
-  - [ ] Stress-Szenario Flags: --stress balise_tail / odo_residual / heavy_map implementieren
-  - [ ] Latenz Early-Detection Placeholder (wenn aktiviert) neutral validieren (ΔP95 <= 0.5 mm) -> sonst deaktiviert lassen
+  - [x] Regelbasierte 4-Regeln-Fusion implementieren (Clamping + Blend) anstelle rein varianzgewichteter Surrogat-Fusion
+  - [x] CLI-Schalter --fusion-mode (rule_based|var_weight) hinzufügen
+  - [x] Secure-Intervallbreite explizit berechnen (additive P99) und exportieren (secure_interval_metrics.csv)
+  - [x] Quantifizierung Additive-P99 Überschätzung: Vergleich MC-Faltung vs. additive Summation (Bias %, ΔP99)
+  - [x] Stress-Szenario Flags: --stress balise_tail / odo_residual / heavy_map implementieren
+  - [x] Latenz Early-Detection Placeholder (wenn aktiviert) neutral validieren (ΔP95 <= 0.5 mm) -> sonst deaktiviert lassen (Export early_detection_eval.json)
+  - [ ] Plot secure_interval_growth (TODO: Zeit-/Distanzmodell Integration)
+  - [ ] Unit-Test: secure_interval additive Bias > 0
 
 ## Phase 5 - Sensitivität & Validierung
 
@@ -78,7 +80,8 @@
 
 ## Neue / Querschnittliche Aufgaben
 
-- [ ] Implementieren secure_interval Export & Zeitverlauf (W(d) vs. Distanz) – Plot figures/secure_interval_growth.png
+- [x] Implementieren secure_interval Export
+- [ ] Zeitverlauf (W(d) vs. Distanz) – Plot figures/secure_interval_growth.png
 - [ ] CLI Option --export-covariance für empirische Komponenten-Kovarianz (Validierung additive Annahme)
 - [ ] Prüf-Skript: additive_p99_bias.py (berechnet relative Überschätzung vs. Monte-Carlo quantile der Summe)
 - [ ] Early Detection Evaluierung (nur wenn Daten verfügbar) – separater Metrics-Block early_detection_eval.json

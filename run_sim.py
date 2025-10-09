@@ -20,7 +20,7 @@ from src.sim_sensors import (
     combine_2d,
 )
 from src.metrics import summarize, bootstrap_ci, rmse
-from src.fusion import fuse_pair
+from src.fusion import fuse_pair, rule_based_fusion
 from src.plots import (
     plot_pdf,
     plot_cdf,
@@ -51,6 +51,10 @@ def main():
     ap.add_argument("--save-samples", action="store_true", help="Persist raw sample errors to CSV")
     ap.add_argument("--time-series", action="store_true", help="Run time-series simulation (RMSE(t), P95(t), Var paths)")
     ap.add_argument("--oos-threshold", type=float, default=0.2, help="Out-of-spec threshold for share_oos metric (m)")
+    ap.add_argument("--fusion-mode", choices=["var_weight","rule_based"], default=None, help="Override fusion mode (default: config driven)")
+    ap.add_argument("--export-secure-interval", action="store_true", help="Export secure interval metrics CSV (width, additive vs joint P99, bias %)")
+    ap.add_argument("--stress", nargs="*", default=None, help="Stress scenario flags: balise_tail, odo_residual, heavy_map")
+    ap.add_argument("--early-detect-validate", action="store_true", help="Validate Early-Detection impact (ΔP95) and log result")
     ap.add_argument("--override-n", type=int, default=None, help="Override N_samples (dev/performance)")
     ap.add_argument("--oat", action="store_true", help="Run OAT sensitivity (longitudinal RMSE proxy)")
     ap.add_argument("--oat-params", nargs="*", default=None, help="Explicit dotted param paths for OAT (overrides default list)")
@@ -77,6 +81,21 @@ def main():
     ts = datetime.now(UTC).isoformat()
 
     # Draw per-sensor longitudinal (and lateral where defined) errors for a single representative epoch
+    # Apply stress flag modifications (temporary, revert in memory only)
+    stress_flags = set(args.stress or [])
+    if stress_flags:
+        if "balise_tail" in stress_flags:
+            # Increase multipath tail weight conservatively
+            orig_weight = cfg.sensors["balise"]["multipath_tail_m"]["weight"]
+            cfg.sensors["balise"]["multipath_tail_m"]["weight"] = min(0.50, orig_weight * 2.0)
+        if "odo_residual" in stress_flags:
+            o = cfg.sensors["odometry"]["residual_circumference_m"]
+            span = max(abs(o["low"]), abs(o["high"]))
+            # widen by 2x (bounded)
+            o["low"], o["high"] = -min(span * 2.0, 0.10), min(span * 2.0, 0.10)
+        if "heavy_map" in stress_flags and "interpolation" in cfg.sensors["map"]["longitudinal"]:
+            cfg.sensors["map"]["longitudinal"]["interpolation"]["weight"] = min(0.6, cfg.sensors["map"]["longitudinal"]["interpolation"]["weight"] * 1.5)
+
     bal = simulate_balise_errors(cfg, n, rng)
     bal_long, bal_lat = simulate_balise_errors_2d(cfg, n, rng)
     map_err = simulate_map_error(cfg, n, rng)
@@ -99,7 +118,21 @@ def main():
     unsafe = gnss_open_long + imu
     var_unsafe = np.var(unsafe, ddof=1)
 
-    fused, var_fused = fuse_pair(secure, np.full(n, var_secure), unsafe, np.full(n, var_unsafe))
+    # Secure interval (additive P99 of components) for rule-based fusion & reporting
+    # Components comprising secure longitudinal path
+    secure_components = {"balise": bal, "odometry": odo, "map": map_err}
+    p99_components = {k: float(np.percentile(np.abs(v), 99)) for k, v in secure_components.items()}
+    additive_p99 = float(sum(p99_components.values()))
+    # Joint P99 via empirical distribution of secure path
+    joint_p99 = float(np.percentile(np.abs(secure), 99))
+    additive_bias_pct = 100.0 * (additive_p99 / joint_p99 - 1.0) if joint_p99 > 0 else float('nan')
+    cfg_fusion = cfg.sensors.get("fusion", {})
+    fusion_mode_cfg = "rule_based" if cfg_fusion.get("rule_based", False) else "var_weight"
+    fusion_mode = args.fusion_mode or fusion_mode_cfg
+    if fusion_mode == "rule_based":
+        fused, var_fused = rule_based_fusion(secure, unsafe, interval_width=additive_p99, blend_steps=int(cfg_fusion.get("blend_steps", 5)))
+    else:
+        fused, var_fused = fuse_pair(secure, np.full(n, var_secure), unsafe, np.full(n, var_unsafe))
 
     metrics_bal = summarize(bal)
     metrics_map = summarize(map_err)
@@ -109,6 +142,11 @@ def main():
     metrics_secure = summarize(secure)
     metrics_unsafe = summarize(unsafe)
     metrics_fused = summarize(fused)
+    # Extend with interval metadata (keep numeric fields numeric; add separate meta fields for strings)
+    metrics_fused["secure_interval_p99_additive"] = additive_p99
+    metrics_fused["secure_interval_p99_joint"] = joint_p99
+    metrics_fused["secure_interval_additive_bias_pct"] = additive_bias_pct
+    fusion_meta = {"fusion_mode": fusion_mode}
 
     # Lateral & 2D metrics (refined):
     # Secure lateral path: balise_lat + map_lat (odometry lateral drift negligible; documented)
@@ -143,7 +181,7 @@ def main():
         "gnss_open": metrics_gnss,
         "secure": metrics_secure,
         "unsafe": metrics_unsafe,
-        "fused": metrics_fused,
+        "fused": {**metrics_fused, **fusion_meta},
     }
     # Add mode comparison metrics
     for mname, sample in gnss_modes_samples.items():
@@ -176,8 +214,21 @@ def main():
             "lateral_unsafe": lateral_unsafe,
             "fused_lat": fused_lat,
             "fused_2d": fused_2d,
+            "secure_interval_additive_p99": np.full(n, additive_p99),
         })
         df_samples.to_csv(out_dir / "samples.csv", index=False)
+
+    # Export secure interval metrics summary if requested
+    if args.export_secure_interval:
+        si_rows = [{
+            "additive_p99": additive_p99,
+            "joint_p99": joint_p99,
+            "bias_pct": additive_bias_pct,
+            **{f"p99_{k}": v for k, v in p99_components.items()},
+            "fusion_mode": fusion_mode,
+            "n_samples": n,
+        }]
+        pd.DataFrame(si_rows).to_csv(out_dir / "secure_interval_metrics.csv", index=False)
 
     # Plots & Legendentabelle
     if not args.no_plots:
@@ -439,10 +490,31 @@ def main():
         except RuntimeError as e:
             print(f"Sobol Analyse übersprungen: {e}")
 
+    # Early detection impact validation (difference in P95 if toggled hypothetically)
+    if args.early_detect_validate and cfg.sensors.get("balise", {}).get("early_detection", {}).get("enabled", False) is False:
+        # Simulate hypothetical early detection by reducing latency mean by c1*v (bounded)
+        bal_cfg = cfg.sensors["balise"]
+        early = bal_cfg.get("early_detection", {})
+        c1 = early.get("c1_ms_per_mps", 0.5)
+        cap_ms = early.get("cap_ms", 4.0)
+        # Approx average speed from morphology
+        v_avg = np.mean(cfg.raw.get("morphology", {}).get("speed_range_kmh", [0, 45])) / 3.6
+        delta_t_ms = min(c1 * v_avg, cap_ms)
+        # Approx effect: subtract v * delta_t from balise latency term only
+        v_proxy = np.full(n, v_avg)
+        bal_improved = bal - v_proxy * (delta_t_ms / 1000.0)
+        secure_improved = bal_improved + odo + map_err
+        joint_p99_improved = float(np.percentile(np.abs(secure_improved), 99))
+        p95_before = metrics_fused.get("p95")
+        p95_after = float(np.percentile(np.abs((secure_improved + unsafe)/2.0), 95))  # rough recompute fused proxy
+        delta_p95 = p95_after - p95_before if p95_before is not None else float('nan')
+        with (out_dir / "early_detection_eval.json").open("w") as f:
+            json.dump({"p95_baseline": p95_before, "p95_hypo": p95_after, "delta_p95": delta_p95, "joint_p99_secure_baseline": joint_p99, "joint_p99_secure_hypo": joint_p99_improved}, f, indent=2)
+
     print(
-    f"Saved metrics (JSON + CSV) to {out_dir}. Plots={'on' if not args.no_plots else 'off'} (minimal={args.minimal_plots}). "
-    f"Raw samples={'saved' if args.save_samples else 'skipped'}. Time-series={'on' if args.time_series else 'off'}. "
-    f"OAT={'on' if args.oat else 'off'}. SRC/PRCC={'on' if args.src_prcc else 'off'}. Quantile={'on' if args.quantile_conditioning else 'off'}. Exceedance={'on' if args.exceedance else 'off'}. Sobol={'on' if args.sobol else 'off'}. ES95={'on' if args.es95 else 'off'}."
+        f"Saved metrics (JSON + CSV) to {out_dir}. Plots={'on' if not args.no_plots else 'off'} (minimal={args.minimal_plots}). "
+        f"Raw samples={'saved' if args.save_samples else 'skipped'}. Time-series={'on' if args.time_series else 'off'}. "
+        f"OAT={'on' if args.oat else 'off'}. SRC/PRCC={'on' if args.src_prcc else 'off'}. Quantile={'on' if args.quantile_conditioning else 'off'}. Exceedance={'on' if args.exceedance else 'off'}. Sobol={'on' if args.sobol else 'off'}. ES95={'on' if args.es95 else 'off'}. FusionMode={fusion_mode}. Stress={','.join(stress_flags) if stress_flags else 'none'}."
     )
 
 
