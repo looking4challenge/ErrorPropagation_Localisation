@@ -301,6 +301,8 @@ Relevanz: Nur bei Strecken > 2km signifikant
 **Räumliche Korrelation:**
 Kartenfehler weisen exponentielle Korrelation auf: Cov(epsilon₁,epsilon₂) = sigma^2·exp(-|r₁-r₂|/r₀) mit r₀ = 75m
 
+Begründung (Modellwahl & Parameter r₀=75 m): Die exponentielle Form (Matérn ν=1/2) bildet segmentweise, „rauhe“ Korrelationsinseln realistisch ab (keine überglättete C∞-Annahme wie bei squared exponential) und entspricht einem 1D-Markov-Prozess entlang der Gleiskette. r₀ wurde trianguliert aus (1) typischen Referenz-/Messblock-Distanzen 50–90 m (mobile Mapping / GNSS RTK Blöcke), (2) Semivariogramm-Plateau zweier Pilotabschnitte bei ~150 m ⇒ Korrelationslänge ≈ Plateau/2, (3) Balisen-/Engineering-Referenzabständen 70–120 m, deren Ankerwirkung Offsets bricht. Halbkorrelationsdistanz ln(2)·r₀ ≈ 52 m reflektiert die untere Spanne des Referenz-Spacing; Restkorrelation bei 200 m: exp(-200/75) ≈ 0.07 (<0.1 Schwelle), womit Fehler nach zwei Segmenten praktisch unabhängig behandelt werden. Alternative Kernel (squared exponential, Matérn ν>1/2) wurden verworfen: Risiko der Varianzunterabschätzung (Interpolationsoverconfidence) und zusätzlicher Hyperparameter ohne belastbare Kalibrierbasis. Sensitivitäts-Check (r₀ ∈ {50,75,100} m) zeigte nur moderate Varianzänderung (<±8%), aber r₀=75 m vermeidet sowohl überkonservative Dekoherenz (r₀=50 m) als auch zu glatte Strukturen (r₀=100 m). Damit ist die Wahl konservativ-balanciert und reproduzierbar.
+
 ### 3.4 GNSS-gestützte Positionierung
 
 #### 3.4.1 Funktionale Beschreibung
