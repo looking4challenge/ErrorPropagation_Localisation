@@ -1,39 +1,48 @@
 # Systemübersicht & Annahmen (Draft zur Review)
 
-Status: Phase 1 (Workspace-Scan abgeschlossen – konsolidiert mit `systemdescription/spezifikationen.md` – Nutzer-Review ausstehend)
-Erstellt: 2025-10-06 (aktualisiert mit Spezifikationsabgleich)
+Status: Phase 1 (Workspace-Scan abgeschlossen – konsolidiert mit `systemdescription/spezifikationen.md` – Update nach Stakeholder-Auftrag eingearbeitet)
+Erstellt: 2025-10-06 (letztes Update: 2025-10-08 Auftrag-Refinement)
 
 ## 1. Betriebsprofil
 
-- Geschwindigkeitsbereich: 0–60 km/h (lokaler Rangier-/Kurzstreckenbetrieb; keine Hochgeschwindigkeit → Latenz × v Effekte begrenzt)
-- Beschleunigungsprofil: moderat (|a| ≤ 0.7 m/s²) → begrenzte dynamische IMU-Anforderungen; lineare Modelle ausreichend
-- Streckenmodusanteile: open 70%, urban 25%, tunnel 5% (Tunnelanteil klein → GNSS-Ausfälle selten aber sicherheitskritisch für Validierung)
+- Geschwindigkeitsbereich: 0–45 km/h (lokaler Rangier-/Kurzstreckenbetrieb; keine Hochgeschwindigkeit → Latenz × v Effekte begrenzt)
+	- Annahme: Obergrenze 45 km/h nach jüngster Stakeholder-Anpassung (vorher 60 km/h) reduziert den erwarteten Beitrag des Terms v·t_latenz sowie dynamische Effekte; konservativ behalten wir bisherige Balise-Mittelwerte unverändert bei, wodurch P95/P99 leicht überschätzt werden (Sicherheitsmarge).
+- Beschleunigungsprofil: moderat (|a| ≤ 0.5 m/s²)
+	- Annahme: Reduktion von 0.7 auf 0.5 m/s² minimiert Notwendigkeit höherer IMU-Dynamikmodelle; lineare Approximation der Latenzfehler bleibt gültig.
+- Streckenmodusanteile: open 70%, urban 30%, tunnel 0%
+	- Annahme: Tunnelbetrieb aktuell ausgeschlossen (0%) → GNSS Total-Ausfälle werden als Stresstest separat gehalten, im Nominalszenario nicht berücksichtigt.
 
-## 2. Subsystemarchitektur (hybride Lokalisierung)
+## 2. Systemgrenze & Subsystemarchitektur (aktualisiert)
 
-Sicherer Pfad (Safety-Relevanz, SIL1 Kontext):
+Gemäß aktualisierter Festlegung besteht das betrachtete Lokalisierungssystem (Systemgrenze) aus:
 
-- Balisen (BRV4) Ereignis-getriggert (nicht 1 Hz limitiert)
-- Zwei-Achsen Odometrie (nicht angetriebene, nicht gebremste Achse → Schlupfarm / schlupfkompensiert per Architektur)
-- Digitale Karte (präzise Track & Referenzpunkte)
+1. Algorithmus auf der sicheren Recheneinheit (regelbasiertes Intervall-Verfahren – KEIN EKF zwischen sicherem und unsicherem Pfad)
+2. GNSS-Empfänger (inkl. Korrekturdienst)
+3. IMU (integraler Bestandteil des Präzisionspfades – liefert geglättete/integrierte Bewegungsinformation für GNSS-Stützung)
 
-Nicht-sicherer Pfad / Erweiterter Präzisionspfad:
+Alle anderen Elemente (Balisen im Gleis, Balisen-Lesegerät, Odometrie, Digitale Karte, Journey-Profile Subsystem) liegen außerhalb der Systemgrenze und liefern Eingaben. Ihre Fehler werden als externe Input-Unsicherheiten modelliert, beeinflussen aber nicht die sicherheitsgerichtete Logik der Intervallbegrenzung.
 
-- GNSS (+ optional RTK / PPP Modi; Parameter noch zu spezifizieren)
-- IMU (SIL1-Hardware optional für zukünftige Schlupfkompensation; aktuell nur im nicht-sicheren Pfad genutzt)
-- Fusions-Proxy: ekf_simple (bestätigt)
+Architektur-Pfade (logische Sicht):
 
-Fehlerkopplung: Kartenfehler wirken korreliert auf beide Pfade → systematische Offsets nicht vollständig wegfusionierbar.
+- Sicherer Intervallpfad ("safe interval"): Externe Inputs Balise + Odometrie + Karte → Algorithmus generiert ein sicheres Positionsintervall [x_min, x_max].
+- Nicht-sicherer Präzisionspfad ("precision"): GNSS + IMU → Punkt-Schätzung x_gnss (IMU liefert Kurzzeit-Stabilisierung / Dead-Reckoning-Brücken ohne das sicherheitsgerichtete Intervall zu verlassen).
+- Kombinationslogik: Vier deterministische Regeln (vgl. Auftrag 1.1.3) zur Ausgabe eines endgültigen sicheren Positionswertes x_out immer innerhalb [x_min, x_max].
+
+Priorisierung Phase 1: Worst-Case sicherer Pfad (Intervallbreite) hat Vorrang; Präzisionspfad (GNSS+IMU) wird nach Nachweis der sicheren Intervallbreite zur Gesamt-RMSE Optimierung betrachtet.
+
+Hinweis: Frühere Verweise auf einen ekf_simple Fusions-Proxy sind aus dem Systemgrenz-Reporting entfernt; intern kann ein Surrogat zur Monte-Carlo-Streuung genutzt werden, ohne die regelbasierte Sicherheitsargumentation zu verändern.
+
+Fehlerkopplung: Kartenfehler (externer Input) erzeugen korrelierte Offsets in Balise-, Odometrie- und GNSS-Daten und wirken so auf Intervall und akzeptierten GNSS-Punkt.
 
 ## 3. Zielmetrik & Anforderungen
 
-- Primäre Anforderung (Nutzer): Längs-RMSE < 0.20 m (gesamtes hybrides System im nominalen Betrieb)
+- Primäre Anforderung (Nutzer): Längs-RMSE < 0.20 m (gesamtes System nominal). Zwischenziel jetzt: Nachweis, dass sichere Intervallbreiten (auf Basis 99%-Perzentil) ohne GNSS/IMU-Beitrag hinreichend klein bleiben, um diese Zielgröße zu ermöglichen.
 - Zusätzliche Berichtskennzahlen: μ, σ, RMSE, P50, P90, P95, P99 (Longitudinal / Lateral / 2D), Bootstrap-CIs
 - Verfügbarkeit / Ausfallmechanismen (GNSS, Balise) werden später erweitert (GNSS Daten fehlen noch)
 
 ## 4. Validierte Fehlerquellen aus bestehenden Analysen
 
-### 4.1 Balisen / BRV4 (konsolidiert)
+### 4.1 Balisen / BRV4 (konsolidiert, aktualisiert)
 
 Quellen: `spezifikationen.md` (Abschnitte 3 / 3.3 Tabelle) & interne Monte-Carlo-Auswertung.
 
@@ -41,7 +50,7 @@ Konfligierende Angaben & Konsolidierung:
 
 | Aspekt | Spezifikationen | Vorheriger Draft | Entscheidung (Simulation v0) | Begründung |
 |--------|-----------------|------------------|------------------------------|------------|
-| Mittlerer Längsfehler (nominal) | 10.2 cm @ 30 km/h (alternativ 12.4 cm „sicher") | 13.6 cm (aggregierte Legacy) | 12.0 cm | Mittelwert zwischen empirischem 10.2 und konservativem 13.6 zur robusteren Abdeckung; spiegelt Geschwindigkeitsmix (30–60 km/h) wider |
+| Mittlerer Längsfehler (nominal) | 10.2 cm @ 30 km/h (alternativ 12.4 cm „sicher") | 13.6 cm (aggregierte Legacy) | 12.0 cm | Annahme: Mittelwert zwischen empirischem 10.2 und konservativem 13.6; konservativ beibehalten trotz reduzierter Max-Geschwindigkeit (jetzt 45 km/h) → leichte Sicherheitsmarge |
 | σ Längs | 2.8–3.1 cm (68% Band) | 1.6 cm | 2.2 cm | Reduziert gegenüber 2.8 (Filter & Kalibrierung), höher als 1.6 (frühere Untermodellierung) |
 | P95 Längs | 19.8 cm | 15.8 cm | 18.0 cm | Interpolation aus neuem σ und moderatem Tail |
 | P99 Längs | 19.8 cm (gleiche Zahl im Text – indiziert Sättigung) | 20.7 cm | 22.0 cm | Leicht angehoben zur Tail-Absicherung |
@@ -59,25 +68,65 @@ Generatives Modell (Längs):
 
 ε_längs = v·t_latenz  + N(0,0.02)  + E_trunc(λ=0.05, cap=0.08)·w_tail  + R_rayleigh(σ=0.012)  + U(-0.015,0.015)
 
-mit w_tail=0.15 Mischanteil (Kalibrierung gegen Ziel-P95/P99). Quer analog ohne Latenzterm.
+mit w_tail=0.15 Mischanteil (Kalibrierung gegen Ziel-P95/P99).
+
+Annahmen & Begründungen Balise:
+- Annahme: w_tail=0.15 liefert P95≈0.18 m & P99≈0.22 m für aktualisierte Geschwindigkeitsbandbreite (reduzierter v senkt v·t Anteil → Tailgewicht unverändert konservativ).
+- Annahme: Negative Frühdetektion (t_early) erst als Placeholder, nicht in Basis-P95/P99 eingerechnet (Vermeidung künstlicher Verengung des Sicherheitsintervalls).
+- Annahme: Gruppenredundanz → p_miss_group vernachlässigbar; Sicherheit nicht latenzkritisch beeinflusst.
+- Annahme: Latenzverteilung trunc Normal(10 ms, 2 ms) [6,14] ms ausreichende Approximation (keine signifikante Abweichung im 99%-Quantil ggü. gemischtem Uniform-Modell laut Spezifikation).
 
 Begründung Konfliktlösung: Frühere 13.6 cm beinhaltete stärkere Tail-Gewichtung bei höherer Referenzgeschwindigkeit; Spezifikationswert 10.2 cm erscheint für 30 km/h, aber Zielsystem arbeitet bis 60 km/h. Mittelwert 12 cm minimiert Risiko Unterabschätzung der RMSE. Tail-Anhebung nötig zur konservativen SIL1-Betrachtung.
 
 Heavy-Tail Szenario (separater Stress-Test): Setze w_tail=0.35 und cap=0.12 m → erwartetes P99 ~0.28–0.30 m.
 
-Balisen-Ausfallmodell (aktualisiert nach Review): Ziel mittlere Nicht-Detektion 1 / 10000 Balisen (p_miss≈1e-4). Aktiviertes Markov-Modell für potenzielle Clustering-Erkennung:
+Balisen-Gruppen: Praktisch werden Gruppen (2–7 Balisen) verbaut; dadurch ist die effektive Gruppen-Detektionsausfallwahrscheinlichkeit vernachlässigbar (p_miss_group ≪ 1e-4). Vorheriges Markov-Ausfallmodell wird für die Bestimmung der sicheren Intervallbreite deaktiviert (nicht-dominant). Optionales Degradationsszenario bleibt als Stress-Test.
 
-Zwei-State Kette (OK, DEGRADED) für „technische Degradation" (optional) und Ereignis-spezifischer Detektionsversuch:
+Neue Placeholder-Komponente Frühdetektion (Early Detection): Geschwindigkeitsabhängiger negativer Latenzanteil t_early = c1·v, c1 ≈ 0.5 ms/(m/s), begrenzt auf 4 ms. Netto-Latenz t_eff = max(t_latenz − t_early, 0). Ziel: plausible teilweise Kompensation des v·t Terms bis empirische Daten vorliegen.
 
-1. Zustandsübergänge pro Balisen-Ereignis: p(OK→DEG)=1e-6, p(DEG→OK)=0.01 ⇒ steady-state P(DEG)≈1e-4.
-2. Detektionswahrscheinlichkeit je Ereignis:
-   - OK-Zustand: p_detect=0.99995 (isolierte sporadische Ausfälle p_iso=5e-5)
-   - DEG-Zustand: p_detect=0.95 (unterliegende Störung)
+#### 4.1.1 Empirische Evidenz Balise-Reader Log (BART_Cut_Testfahrt.log)
 
-Erwartete gesamt P_miss ≈ 1e-4 (OK Anteil · p_iso + DEG Anteil · (1 − 0.95)).
-Für Basis-Simulation kann optional die DEG-Zustandsebene deaktiviert werden (reduziert auf Bernoulli p_miss=1e-4). Parameter wandern in `model.yml` (section sensors.balise.failure_model).
+Analyse des bereitgestellten Rohlogs (`systemdescription/BART_Cut_Testfahrt.log`) fokussiert auf Telegramm-Fundraten, Wiederholungs-Skips und INCIDENT-Ereignisse. Parsing-Regel: Regex `Telegrams found: (k) telegrams, skipped repetitions: (r)` über alle Meldungen.
 
-### 4.2 Odometrie (schlupfkompensiert durch Achswahl)
+Aggregierte Kennzahlen (1247 ausgewertete Analysefenster, Seed-unabhängig):
+
+| Kennzahl | Wert | Kommentar |
+|----------|------|-----------|
+| Fenster (Analyseaufrufe) | 1247 | Basis N für Raten |
+| Summe Telegramme | 1192 | Brutto empfangene Short-Telegramme |
+| Mean Telegramme/Fenster | 0.956 | Leicht <1 → viele Leerlauf-Fenster (Zugbewegung / Timing) |
+| P50 / P90 / P95 / P99 (Tele/Fenster) | 1 / 2 / 2 / 3 | Max 3 beobachtet (kein Extrem-Cluster) |
+| Anteil Fenster mit 0 Telegrammen | 29.8% | „Zero Windows“ – nicht zwingend Ausfall, eher Nichtpassage / Idle; liefert Obergrenze für naive p_idle |
+| Skipped repetitions (gültig, r≥0) – Mean | 3.91 | Interne Wiederholungen / deduplizierte Repetitionsframes |
+| Skipped repetitions P90 / P95 / P99 / Max | 7 / 8 / 10 / 13 | Repetitions-Last im oberen Dezil; Timeout=2000 ms plausibel ausreichend |
+| INCIDENT Events | 28 | Bit-Anomalie-Marker („number of demodulated X-bits“) |
+| INCIDENT Rate pro Fenster | 2.25% | Obergrenze für sporadische Bit-/Demodulationsanomalien (nicht gleich Fehldetektion) |
+
+Interpretation & Abgleich mit Modellannahmen:
+
+1. Fundverteilung: Max=3 Telegramme/Fenster → kein Hinweis auf größere Telegramm-Bursts; Heavy-Tail im Modell (w_tail=0.15) weiterhin nicht durch Fund-Bursts motiviert, sondern durch Latenz-/Multipath-Fehler – bleibt unverändert.
+2. Zero Windows (~30%): Diese Fenster sind nicht direkt als „Balise verpasst“ zu interpretieren (Log enthält auch Idle-Zeit). Für p_miss_group bleibt Annahme ≪1e-4 valide; keine Evidenz für systematischen Verlust beim tatsächlichen Überfahren.
+3. Skipped repetitions: Oberes Dezil (≥7) zeigt, dass Wiederholungsframes auftreten, jedoch mit moderatem Maximum (13). Kein Bedarf, Repetition Timeout (2000 ms) im Modell zu verschärfen; Latenzkomponente wird nicht durch Exzess-Repetitionen dominiert.
+4. INCIDENT Rate 2.25%: Relevanz für potenziellen Zusatzfehler (Bit-Anomalien). Da alle gezeigten Telegrammdumps „ALL_TESTS_OK“ aufweisen, führen INCIDENTs offenbar meist zu Diagnoseeinträgen ohne Telegrammverwerfung. Konservativ kann ein kleiner Zusatz-Noise-Term (<1 cm) oder erhöhte Tail-Gewichts-Stabilisierung beibehalten werden; keine Erhöhung w_tail erforderlich.
+5. Konsistenz der Scrambling/Control Bits über Dumps → keine offensichtliche Konfigurationsvariabilität, unterstützt Annahme stationärer Parameter.
+
+Auswirkungen auf bestehende Parameter:
+- Keine Anpassung von w_tail (0.15) nötig; log zeigt keine signifikante Häufung extremer Empfangsfenster.
+- p_miss_group weiterhin vernachlässigbar (Zero Windows nicht als Miss zu werten ohne Trajektorienmarker).
+- Latenzmodell bleibt unverändert; keine Evidenz für extrem lange Repetitionsketten.
+- Early-Detection Placeholder weiterhin unbestätigt (Log enthält keine Frühzeitstempel-Indikatoren) – bleibt deaktiviert für Intervallverengung.
+
+Geplante Ergänzungen (optional Phase ≥2):
+- Detaillierter Klassifikator für Idle vs. tatsächliche Passfenster (Integration Odometrie / Zeitstempel) zur besseren Obergrenze p_miss.
+- Mapping INCIDENT-Typen auf spezifische Fehlerklassen (Bit 1 vs. 0 Anomalie) → differenziertes Auswirkungsmodell.
+
+Abweichungen / Nicht abgeleitet:
+- Keine Distanzinformation im Log → keine direkte empirische Schätzung des geschwindigkeitsabhängigen Latenzterms.
+- Keine Positionsoffsets im Log → Balise Längsfehler-Distribution unverändert modellbasiert.
+
+Damit stützt das Log primär Stabilität der Annahmen und liefert oberseitige Raten (Idle/Incident), ohne Necessität für Parameter-Revision.
+
+### 4.2 Odometrie (aktualisiert: freilaufende Einzelachse, Umfang bereits kompensiert)
 
 Referenzen: `spezifikationen.md` (Odometrie-Abschnitte), `odometrie_error_analysis.md`.
 
@@ -92,13 +141,13 @@ Mess- & Modellparameter:
 | Radverschleiß Spannweite | -8.97% Umfang (Rad-Durchmesser 850→780 mm) | Spezifikation (definierter Bereich bestätigt) |
 | Adaptive Kalibrierung | Umfangskorrektur pro Balisensegment | Spezifikation |
 | Schwelle Umfangsanpassung | 1 mm über 100 Messzyklen | Spezifikation |
-| Residual Umfangsfehler (typisch) | ≤0.10 m pro Segment (theoretisch max 0.39 m) | Spezifikation, konservativ: 25% der Obergrenze |
+| Residual Umfangsfehler (typisch) | Abweichung ±0.02 m / 100 m Segment (kompensiert) | Auftrag Zusatzinfo (ersetzt frühere konservative Spanne) |
 
-Simulation Implementation v0:
+Simulation Implementation v0 (angepasst auf sichere Pfad Priorität):
 
 1. Stochastischer inkrementeller Fehler = Quantisierung (Uniform(-Δ/2, Δ/2)).
-2. Driftanteil = Normal(0, (0.010 m / km)·Δd) pro Segment mit Re-Nullstellung an Balise.
-3. Residual systematischer Umfangsfehler: Uniform(-0.03, 0.03) m pro Segment (aktualisierte Info). Optional Stress: Uniform(-0.10,0.10) m.
+2. Driftanteil = Normal(0, (0.010 m / km)·Δd) pro Segment (Reset bei Balise). (Prüfung offen, ob durch freilaufende Achse drift_per_km weiter reduzierbar.)
+3. Residual Umfangsfehler: Uniform(-0.02, 0.02) m pro 100 m (linear mit Segmentlänge); Stress-Szenario: frühere größere Spannen zur Robustheit.
 
 Erläuterung Residual Umfangsfehler (aktualisiert 3 cm / 10 cm Extrem): Dieser Term modelliert den verbleibenden systematischen Distanzoffset zwischen zwei Balisen nach Anwendung der adaptiven Umfangskorrektur. Er bündelt:
 
@@ -106,7 +155,12 @@ Erläuterung Residual Umfangsfehler (aktualisiert 3 cm / 10 cm Extrem): Dieser T
 - Temperatur-/Druck-induzierte elastische Radumfangsvariation
 - Nichtmodellierte minimale Schlupfanteile auch bei nicht-angetriebener Achse
 
-Die typische Spanne jetzt ±0.03 m (3 cm) (≈0.003% eines 1 km Segments) basiert auf neuer Betriebs-/Kalibrier-Rückmeldung. Ein Extrem-/Stressfall wird mit ±0.10 m (10 cm) modelliert, um seltene Kombinationen aus Temperaturgradient, verzögerter Kalibrierung und geringer Balisen-Dichte abzudecken.
+Die typische Spanne jetzt ±0.02 m (2 cm) / 100 m (≈0.0002 relativ) basierend auf kompensierter Umfangsbestimmung. Ein Extrem-/Stressfall wird mit ±0.10 m (10 cm) modelliert (seltene Kombination Temperaturgradient + verzögerte Kalibrierung + geringe Balisen-Dichte).
+
+Annahmen & Begründungen Odometrie:
+- Annahme: Drift 10 mm/km bleibt gültig trotz reduzierter Max-Geschwindigkeit (geringere thermische & dynamische Variation → konservativ).
+- Annahme: Residual Umfang Uniform-Verteilung (statt Normal) um gleichmäßige Unsicherheit ohne Zentrierungsannahme abzubilden.
+- Annahme: Keine explizite Schlupfmodellierung (freilaufende Achse) → potentielle unerkannte Mikro-Schlupfanteile im Residual enthalten.
 
 Schlupfmodell bleibt deaktiviert (Annahme: nicht angetriebene Achse → minimiert Schlupf). Erweiterung: Koppelung an IMU longitudinal acceleration threshold (Phase ≥4, falls benötigt).
 
@@ -127,7 +181,12 @@ Längsfehler Karte ~ Normal(0, 0.019 m) + Exp(λ=0.02) getrimmt 5 cm (gewicht 0.
 
 Systematische Offsets (gemeinsame Referenz) erzeugen Korrelation mit Balise & GNSS (s.u.).
 
-### 4.4 GNSS / IMU / Fusion (nach Review bestätigt)
+Annahmen & Begründungen Karte:
+- Annahme: Kombination Normal + gedämpfte Exponential Tail (Gewicht 0.3) liefert realistisch leicht-schiefe Verteilung (Semivariogramm-Hinweise auf seltene lokale Ausreißer).
+- Annahme: Skalierungsfehler α ~ N(0,6e-4) nur für Distanzen >2 km relevant → vernachlässigt im typischen Kurzstreckenbetrieb (≤1 km zwischen Balisen) -> konservativ, da Nichtberücksichtigung keine künstliche Intervallverengung erzeugt.
+- Annahme: Querfehler Normal(0,0.014 m) ausreichend (fehlende Hinweise auf heavy-tail lateral in vorliegenden Spezifikationen).
+
+### 4.4 GNSS + IMU (innerhalb System) / Regelbasierte Nutzung (aktualisiert)
 
 GNSS (Defaults akzeptiert):
 
@@ -137,7 +196,7 @@ GNSS (Defaults akzeptiert):
 | Urban | 0.50 m | 0.80 m | 0.05 | Exp(λ=2, cap 3 m, w=0.1) |
 | Tunnel | n/a (kein Fix) | n/a | 1.0 | – |
 
-IMU (Automotive / moderne Sensorplattform, angelehnt an aktuelle lidar-gestützte Systemintegrationen):
+IMU (innerhalb Systemgrenze – liefert Kurzzeit-Inertialstützung zur Brückung zwischen GNSS Messungen, verbessert Stabilität bei kurzfristigen Ausfällen / Degradierungen):
 
 | Parameter | Modell | Wert |
 |-----------|--------|------|
@@ -147,15 +206,26 @@ IMU (Automotive / moderne Sensorplattform, angelehnt an aktuelle lidar-gestützt
 | gyro_noise_density | Weißrauschen | 0.01 °/s/√Hz |
 | Bias Random Walk Zeitkonstante | Exponential | τ=900 s |
 
-Fusion-Latenz (angepasst): Δt_fusion ~ N(20 ms, 5 ms) trunc [10,35] ms; Jitter wird in dieser Verteilung absorbiert. Effektiver Positionsfehler-Term in Proxy-Fusion: v · Δt_fusion · (1 − K_gain) mit initialem linearen Gain K_gain≈0.6 (reduziert Einfluss auf finale Schätzung).
+Regelbasierte Kombination (ersetzt EKF Beschreibung):
 
-Hinweis: GNSS Parameter jetzt als ACCEPTED markiert (nicht mehr „unsicher“). IMU Parameter aktualisiert (niedrigere Bias-/Noise-Werte vs. v0 Proxy). Latenz drastisch reduziert – erwartete Verringerung des Latenz-bedingten Beitrags zur Längsvarianz.
+1. GNSS invalid / diagnostisch schlecht → Ausgabe = Intervallmittel.
+2. GNSS gültig & innerhalb [x_min, x_max] → Ausgabe = x_gnss.
+3. GNSS gültig & außerhalb → Clamping auf Grenzwert.
+4. Verfügbarkeits-Flanke → sanfte Überblendung (linear über n_steps, stets innerhalb Intervall). Parameter n_steps TBD.
+
+Latenz: Für sichere Intervallgrenzen maßgeblich Balise/Odometrie; frühere "Fusion-Latenz" nur intern als Surrogat.
+
+Annahmen & Begründungen GNSS/IMU:
+- Annahme: Bias- & Rauschwerte unverändert trotz geringerer v_max (45 km/h) – konservative Beibehaltung (Rauschen v-unabhängig, Multipath urban bleibt dominanter Faktor).
+- Annahme: Tunnel = 0% Betriebsanteil → Outage-Modell primär open/urban; vollständige Outage-Szenarien verschoben in Stress-Test.
+- Annahme: IMU Bias Random Walk τ=900 s hinreichend groß relativ zu Simulationshorizont → Bias quasi konstant innerhalb Standard-Sim → Modellvereinfachung.
+- Annahme: Keine probabilistische Fusion → Regelwerk verhindert Verstärkung unsicherer GNSS-Ausreißer (Clamping-Regel 3).
 
 ## 5. Funktionale Verarbeitungspfade & vereinfachte Fehlermodelle (Stakeholder-Summary)
 
 Ziel dieses Abschnitts: Technisch verständliche Übersicht ohne vertiefte Statistik. Jeder Pfad liefert Positionsinformation; Fehlerquellen addieren sich (vereinfachte additive Modellierung) oder wirken multiplikativ bei Skalenfehlern.
 
-### 5.1 Balisen-Verarbeitungspfad
+### 5.1 Balisen-Verarbeitungspfad (Early Detection Placeholder)
 
 1. Detektion (Antenne + Signalprozess): Rohsignal → Telegramm → Zeitstempel.
 2. Zeitstempel-Korrektur (Verarbeitungs- / Kommunikationslatenz).
@@ -164,7 +234,9 @@ Ziel dieses Abschnitts: Technisch verständliche Übersicht ohne vertiefte Stati
 
 Vereinfachtes Fehlermodell (Längsrichtung):
 
-Positionsfehler_balise_längs ≈ (Geschwindigkeit · Latenz) + Antennenoffset + Signalqualität/Tail + EM-Störungen + Witterung + Kartenoffset
+Positionsfehler_balise_längs ≈ (Geschwindigkeit · (t_latenz − t_early)⁺) + Antennenoffset + Signalqualität/Tail + EM-Störungen + Witterung + Kartenoffset
+
+mit t_early ≥ 0 (geschwindigkeitsabhängig), (·)⁺ = max(·,0). Verteilung t_early noch nicht empirisch kalibriert.
 
 Typische Beiträge (Richtwerte):
 
@@ -175,7 +247,12 @@ Typische Beiträge (Richtwerte):
 - Witterung: Uniform(-0.015, 0.015) m
 - Kartenoffset: Normal(0, 0.019 m)
 
-Interpretation: Dominanter Anteil ist bei höheren Geschwindigkeiten der Latenzterm; darunter systematische Offsets (Karte, Antenne) und stochastische Streuung (EM, Tail).
+Interpretation: Dominanter Anteil ist bei höheren Geschwindigkeiten der Latenzterm; durch reduzierte v_max (45 km/h) sinkt dessen Beitrag gegenüber früherem 60 km/h Szenario geringfügig; systematische Offsets (Karte, Antenne) und stochastische Streuung (EM, Tail) bestimmen P99.
+
+Annahmen & Begründungen Pfad Balise:
+- Annahme: t_early Placeholder nicht zur Verengung der Sicherheitsgrenzen genutzt, bis empirische Validierung vorliegt.
+- Annahme: Rayleigh EM-Modell beibehalten (keine neueren EM-Daten vorliegend) → konservativ moderate Heavy-Tail Ergänzung.
+- Annahme: Wetter Uniform ±1.5 cm bleibt trotz saisonalem Ausschluss (keine Tunnel) – Oberflächenbedingungen im urban/open identisch plausibel.
 
 ### 5.2 Odometrie-Verarbeitungspfad
 
@@ -186,7 +263,7 @@ Interpretation: Dominanter Anteil ist bei höheren Geschwindigkeiten der Latenzt
 
 Vereinfachtes Fehlermodell Segment (zwischen Balisen):
 
-Positionsfehler_odo_segment ≈ Quantisierungsrauschen + Drift + Residual Umfangsfehler (±0.01 m) + (optional Stress: zusätzlicher systematischer Block)
+Positionsfehler_odo_segment ≈ Quantisierungsrauschen + Drift + Residual Umfangsfehler (±0.02 m /100 m) + (optional Stress: zusätzlicher systematischer Block)
 
 Typische Beiträge (für 1 km Segment):
 
@@ -195,6 +272,10 @@ Typische Beiträge (für 1 km Segment):
 - Residual Umfang (3 cm Band)
 
 Interpretation: Die Odometrie ist sehr präzise kurzfristig; Fehler wachsen zwischen Balisen kontrolliert und werden bei jedem Balisen-Event zurückgesetzt.
+
+Annahmen & Begründungen Pfad Odo:
+- Annahme: Linearer Drift-Envelope ausreichend (keine Quadratterme nötig bei v ≤ 45 km/h).
+- Annahme: Ohne Separate Schlupfmodellierung; eventuelle kleine Schlupfanteile im Residual bereits konservativ abgedeckt.
 
 ### 5.3 Digitale Karte Verarbeitungspfad
 
@@ -215,19 +296,37 @@ Typische Beiträge:
 
 Interpretation: Kartenfehler sind relativ klein, aber systematisch und damit korreliert zwischen Balise, GNSS und Odometrie (über Korrekturen). Sie setzen den „gemeinsamen Boden“ der Genauigkeit.
 
-### 5.4 Zusammenspiel der Pfade
+### 5.4 Zusammenspiel der Pfade (regelbasiert statt probabilistischer Fusion)
 
 - Balise liefert absolute Anker mit moderater Einzel-Unsicherheit (dominiert durch Latenz + Offsets); reduziert Odometrie Drifts.
 - Odometrie füllt die Zeit/Gleisdistanz zwischen Balisen hochauflösend mit geringer Fehlerzunahme.
 - Karte projiziert/fusioniert beide Pfade und definiert systematische Offsets (→ Korrelationen).
 
-Ein vereinfachtes longitudinales Gesamtmodell (Qualitativ):
+Intervallbildung (auf 99%-Perzentil basierend):
 
-Positionsfehler_total ≈ Gewicht(Balise)·Positionsfehler_balise  + Gewicht(Odo)·Positionsfehler_odo  + Kartenoffset  (+ GNSS/IMU Beiträge im erweiterten Pfad)
+Annahme: Sicherheitsintervall [x_min, x_max] definiert als symmetrischer Bereich um den letzten Balisenanker plus Odometrie-Inkrement mit Halbbreite = P99(|e_secure(d)|), wobei e_secure(d) zusammengesetzt ist aus:
 
-Gewichtungen werden später im Fusions-Proxy (ekf_simple) parametriert (Heuristik: Varianz-invers als Start).
+e_secure(d) = e_balise_anchor + e_odo(d) + e_map
 
-### 5.5 Warum additive Modelle hier ausreichend (für Stakeholder)
+mit Komponenten (vereinfachte Bounding-Verteilungen):
+1. e_balise_anchor: Kombination Latenz (v·t_latenz), Antennenoffset, EM, Tail, Wetter (siehe 4.1) → P99_balise.
+2. e_odo(d): Quantisierung + Drift + Umfangresidual skaliert mit Distanz d seit letztem Balisenanker → P99_odo(d).
+3. e_map: Kartenoffset (längs) → P99_map.
+
+Annahme: Korrelationen zwischen Termen für konservative Intervallabschätzung vernachlässigt (additive P99 Approximation: P99_total ≈ P99_balise + P99_odo(d) + P99_map). Dies überschätzt echtes P99 leicht (Sicherheitsreserve).
+
+Somit: x_min = x_anchor + s_odo(d) − P99_total(d); x_max = x_anchor + s_odo(d) + P99_total(d), mit s_odo(d) = integrierte Odometrie-Distanz.
+
+Breitenwachstum zwischen Balisen: W(d)=2·P99_total(d) ≈ 2·(P99_balise + P99_map + P99_odo(d)).
+
+Regelbasierte Nutzung GNSS/IMU unverändert (Abschnitt 4.4): GNSS-Punkt ersetzt Intervallmittel nur falls innerhalb [x_min, x_max]; andernfalls Clamping → garantiert Sicherheit.
+
+Annahmen & Begründungen Intervall:
+- Annahme: Symmetrisches Intervall ausreichend obwohl Balise Fehlerverteilung tail-geschoben sein kann; P99 symm. konservativ.
+- Annahme: Lineare Summation der Einzel-P99 anstatt Faltung → konservative Obergrenze (kein Reduktionsfaktor durch teilweise Unkorreliertheit angewandt).
+- Annahme: Distanzabhängigkeit nur im Odo-Term modelliert; Balise- und Kartenanteile konstant bis neuer Anker.
+
+### 5.5 Warum additive Modelle hier weiterhin ausreichend (für Stakeholder)
 
 Obwohl einige Fehlerquellen nicht strikt additiv sind (z.B. Kopplungen, nichtlineare Filter), liefert die additive Näherung konservative Schätzungen für Streuung und Perzentile bei homogenen Betriebsbedingungen (<60 km/h) und moderaten Latenzen. Detailliertere Kopplung (z.B. Kovarianzmatrix, Copula) wird intern in der Monte-Carlo Pipeline berücksichtigt, ist für das grundsätzliche Verständnis aber nicht erforderlich.
 
@@ -242,15 +341,15 @@ Obwohl einige Fehlerquellen nicht strikt additiv sind (z.B. Kopplungen, nichtlin
 | Odometrie Drift | Lineares Drift+Rauschen | odometrie_error_analysis.md | MITTEL | NIEDRIG | ~10 mm/km |
 | Karten Geometrie | Normal + exp Interpolation (konsolidiert) | spezifikationen.md & map_error_analysis.md | MITTEL | MITTEL | Korrelierter Offset |
 | Karten Skalierung | Proportionaler Fehler (α ~ N(0,6e-4)) | spezifikationen.md | NIEDRIG (<2 km) | NIEDRIG | Ab >2 km relevant |
-| GNSS Bias/Noise | Normal / lognormal (TBD) | (offen) | HOCH | HOCH | Open vs urban vs tunnel |
-| GNSS Ausfälle | Bernoulli pro Zeitschritt | (offen) | HOCH | HOCH | Tunnel ↑ |
+| GNSS Bias/Noise | Normal / lognormal (bestätigt) | Auftrag / akzeptierte Defaults | HOCH | HOCH | Open vs urban vs tunnel |
+| GNSS Ausfälle | Bernoulli pro Zeitschritt | Defaults | HOCH | HOCH | Annahme: Tunnel 0% → Outage-Basis offen/urban |
 | IMU Bias/Drift | Random Walk + Bias | (Standardvorschlag) | MITTEL | MITTEL | Für Dead-Reckoning bei GNSS-Ausfall |
 | Balise Ausfall | Linear oder Markov | balise_error_analysis.md | MITTEL | MITTEL | Wahl pending |
 | Zeit-Latenz Fusion | Stoch. Delay → Position = v·Δt | balise_error_analysis.md | MITTEL | NIEDRIG | v ≤ 60 km/h begrenzt |
 
 Nicht berücksichtigt (initial): Extreme Wetter (Regen/Laub/Schnee) → keine quantifizierten Daten; Oberleitungsreflexionen GNSS (multipath) → später falls Daten; Weichen-Topologiefehler → binär, separat qualitativ.
 
-## 7. Korrelationen (Draft)
+## 7. Korrelationen (Draft – Terminologie angepasst, Targets unverändert)
 
 Aktualisierte arbeitsfähige Korrelationsannahmen (werden in Phase 2 validiert):
 
@@ -278,7 +377,7 @@ Toleranz für Validierung: |ρ_sample − ρ_target| ≤ 0.05 (Konfig `rho_tol`)
 - Bootstrap: B=500 (kann bei N=10000 ausreichend) – Performance vs. Stabilität balanciert
 - Output: Ergebnisse als CSV (metriken.csv), sensitivitaet.csv, Plots in figures/
 
-## 10. Offene Punkte / Status
+## 10. Offene Punkte / Status (aktualisiert)
 
 | Punkt | Thema | Status | Aktion nötig |
 |-------|-------|--------|--------------|
@@ -286,16 +385,22 @@ Toleranz für Validierung: |ρ_sample − ρ_target| ≤ 0.05 (Konfig `rho_tol`)
 | 2 | GNSS Defaults | BESTÄTIGT | keine |
 | 3 | IMU Parameter | AKTUALISIERT (automotive) | keine |
 | 4 | Balise Ausfallmodell | MARKOV AKTIV | Feinjustierung nach erster Sim falls Abweichung P_miss |
-| 5 | Fusion Latenz | REDUZIERT 20±5 ms | Validierung Einfluss nach Sim |
+| 5 | Regelwerk statt EKF | IMPLEMENTIERT (Beschreibung angepasst) | Konsistenz model.yml prüfen |
+| 5a | Early-Detection Balise | NEU (Placeholder) | Parametrisierung / Daten offen |
+| 5b | Fusion Latenz Surrogat | REDUZIERT 20±5 ms (intern) | Nicht architekturkritisch kommunizieren |
 | 6 | Korrelationen | BESTÄTIGT | Phase 2 Validierung |
-| 7 | Residual Umfangsfehler | AKTUALISIERT (±0.03 m, Stress ±0.10 m) | Nach MC-Befund ggf. Verengung |
+| 7 | Residual Umfangsfehler | AKTUALISIERT (±0.02 m/100 m, Stress ±0.10 m) | Nach MC-Befund ggf. Verengung |
+| 8 | P99 Intervallbildung | IMPLEMENTIERT (additive P99 Summation) | Validierung konservative Überschätzung quantifizieren |
 
 Offen zur Entscheidung nach ersten Ergebnisplots: Anpassung Residual Umfangsfehler-Spanne (Punkt 7). Bitte später Zielband (z.B. ±0.02 m) nennen falls enger.
 
-## 11. Nächste Schritte nach Review
+## 11. Nächste Schritte nach Review (angepasst)
 
-- Einarbeiten Feedback → finalize config/model.yml
-- decisions.log ergänzen
-- Phase 2: Korrelationsvalidierung + Testplanung
+- Prüfen, dass `model.yml` keine EKF-Verschmelzung sicher/unsicher enthält (nur Regelparameter)
+- Early-Detection Parameter c1 & Cap evaluieren oder Feature temporär deaktivieren (Flag) → decisions.log
+- Intervallwachstumsmodell numerisch verifizieren (Monte Carlo) vs. Zielband
+- decisions.log ergänzen (Systemgrenze, Balise Gruppen p_miss vernachlässigbar, Regelwerk 4 Regeln, Early-Detection Placeholder, Umfang ±0.02 m /100 m)
+- Phase 2: Korrelationsvalidierung + Testplanung bleibt bestehen
+- Quantifizierung P99 Überschätzung durch additive Annäherung (Vergleich mit Kopplungs-Sampling)
 
 Bitte Feedback / Korrekturen je Abschnitt (Nummer + Änderung). Falls „ok“, vermerken.

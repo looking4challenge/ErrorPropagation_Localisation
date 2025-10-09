@@ -34,6 +34,12 @@
   - [x] Lateral Fehlerpfad hinzugefügt (Balise/Map quer, vereinfachte Annahmen)
   - [x] Verbesserte 2D Fusion (separate Gewichtung longitudinal/lateral im Zeitmodell)
   - [x] Realistischere Lateral-Unsicherer Pfad (eigene GNSS Quer Noise/Bias Parametrisierung implementiert)
+  - [ ] Regelbasierte 4-Regeln-Fusion implementieren (Clamping + Blend) anstelle rein varianzgewichteter Surrogat-Fusion
+  - [ ] CLI-Schalter --fusion-mode (rule_based|var_weight) hinzufügen
+  - [ ] Secure-Intervallbreite explizit berechnen (additive P99) und exportieren (z.B. secure_interval_metrics.csv)
+  - [ ] Quantifizierung Additive-P99 Überschätzung: Vergleich MC-Faltung vs. additive Summation (Bias %, ΔP99)
+  - [ ] Stress-Szenario Flags: --stress balise_tail / odo_residual / heavy_map implementieren
+  - [ ] Latenz Early-Detection Placeholder (wenn aktiviert) neutral validieren (ΔP95 <= 0.5 mm) -> sonst deaktiviert lassen
 
 ## Phase 5 - Sensitivität & Validierung
 
@@ -46,14 +52,34 @@
 - [x] Konsolidierter Sensitivitätsbericht (inkl. Sobol & ΔES95)
   - [ ] Sobol Verfeinerung (N_base erhöhen)
   - [ ] Erweiterung auf rmse_2d / p95_2d
+  - [ ] OAT Erweiterung lateral/2D (ΔRMSE_lat, ΔRMSE_2d, ΔP95_2d)
+  - [ ] Additive vs. Joint P99 Sensitivität (Ranking Einfluss Korrelationen auf Intervallbreite)
+  - [ ] Parameter-Subset für Stress Szenarien (Tail Gewicht w_tail, odo residual range, map interpolation weight) global analysieren
+  - [ ] Dokumentation Sensitivitätsimplikationen: Top 5 Parameter → empfohlene Überwachungen / Kalibrierung
 
 ## Phase 6 - Bericht
 
 - [ ] Markdown Bericht erstellen
 - [ ] Akzeptanzkriterien prüfen
   - [ ] 2D Kennzahlen (RMSE_2D, P95_2D) dokumentieren
+  - [ ] Abschnitt Secure Intervall (Methodik additive P99 + Bias Quantifizierung)
+  - [ ] Abschnitt Regelbasierte Fusion (4 Regeln + Sicherheitsgarantie Clamping) hinzufügen
+  - [ ] Darstellung Additive vs. Joint P99 Vergleich (Tabelle + Prozentuale Überschätzung)
+  - [ ] Stress-Szenario Ergebnisse (Kurzvergleich Baseline vs. Stress) aufnehmen
+  - [ ] Reproduzierbarkeitssektion um Config-Hash & secure_interval settings erweitern
 
 ## Dauerhaft
 
 - [ ] decisions.log pflegen
 - [ ] Seeds & Reproduzierbarkeit sicherstellen
+ - [ ] Konsistenz model.yml ↔ Systemübersicht prüfen bei jeder strukturellen Änderung (Automatische Checkliste)
+ - [ ] Technische Schuld: Refactoring fuse_pair Nutzung entfernen wenn rule_based aktiv (Dead Code vermeiden)
+ - [ ] Optional: Unit-Test für Secure-Intervallbreite (monoton wachsend mit Distanz, obere Schranke Stress-Szenario)
+
+## Neue / Querschnittliche Aufgaben
+
+- [ ] Implementieren secure_interval Export & Zeitverlauf (W(d) vs. Distanz) – Plot figures/secure_interval_growth.png
+- [ ] CLI Option --export-covariance für empirische Komponenten-Kovarianz (Validierung additive Annahme)
+- [ ] Prüf-Skript: additive_p99_bias.py (berechnet relative Überschätzung vs. Monte-Carlo quantile der Summe)
+- [ ] Early Detection Evaluierung (nur wenn Daten verfügbar) – separater Metrics-Block early_detection_eval.json
+- [ ] Dokumentation Stress-Modi: heavy_tail_balise, wide_odo_residual, high_multipath_gnss

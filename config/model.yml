@@ -10,6 +10,11 @@ sim:
   B_bootstrap: 500          # Bootstrap resamples (95% CI)
   rho_tol: 0.05             # |ρ_sample - ρ_target| Toleranz
   delta_pct: 10             # OAT Perturbation ±10%
+morphology:
+  # Betriebsprofil (aktualisiert 2025-10-08)
+  speed_range_kmh: [0, 45]
+  accel_max_mps2: 0.5
+  route_mix_pct: {open: 70, urban: 30, tunnel: 0}
 modes: ["open","urban","tunnel"]
 correlations:
   use_copula: true
@@ -30,6 +35,10 @@ sensors:
       std: 2.0
       lower: 6.0
       upper: 14.0
+    early_detection:        # Placeholder deaktiviert (t_early = c1 * v, cap)
+      enabled: false        # Wird nicht zur Intervallverengung genutzt bis empirisch kalibriert
+      c1_ms_per_mps: 0.5
+      cap_ms: 4.0
     antenna_offset_m:
       dist: normal
       mean: 0.0
@@ -47,9 +56,9 @@ sensors:
       low: -0.015
       high: 0.015
     detection:
-      p_detect_nominal: 0.99995
+      p_detect_nominal: 0.99995   # Gruppenredundanz → Miss-Wahrscheinlichkeit vernachlässigbar
       markov:
-        use: true
+        use: false                # Deaktiviert per Systemgrenzen-Update (Basissimulation)
         p_ok_to_deg: 1.0e-6
         p_deg_to_ok: 0.01
         p_detect_degraded: 0.95
@@ -61,8 +70,8 @@ sensors:
     quant_step_m: 0.0134          # Radumfang/Impulse
     residual_circumference_m:
       dist: uniform
-      low: -0.03
-      high: 0.03
+      low: -0.02                 # Aktualisiert: typische kompensierte Spanne ±0.02 m /100 m
+      high: 0.02
     drift_per_km_m: 0.010         # σ Drift (m / km)
   map:
     longitudinal:
@@ -145,14 +154,22 @@ sensors:
     accel_noise_density_mps2_sqrtHz: 0.05
     gyro_noise_density_dps_sqrtHz: 0.01
   fusion:
-    latency_ms:
+    # Regelbasiertes 4-Regeln Schema ersetzt EKF für Systemgrenzen-Reporting.
+    # Diese Parameter sind interne Surrogate für Performanceabschätzung, nicht sicherheitskritisch.
+    rule_based: true
+    filter_proxy: rule_based_4rules
+    blend_steps: 5            # sanfte Überblendung bei (Re-)Verfügbarkeit
+    latency_ms:               # interne (unsichere Pfad) Latenz – kein Einfluss auf sichere Intervallgrenzen
       dist: trunc_normal
       mean: 20.0
       std: 5.0
       lower: 10.0
       upper: 35.0
     timestamp_jitter_ms: 5.0
-    filter_proxy: ekf_simple
+
+secure_interval:
+  method: additive_p99        # Symmetrisches Intervall ±P99_sum (konservativ)
+  conservative: true          # Korrelationen zwischen Komponenten ignoriert (bewusste Überschätzung)
 
 reporting:
   metrics: [rmse_longitudinal, rmse_lateral, p50, p90, p95, p99]
@@ -164,3 +181,4 @@ reporting:
 # - Map Fehler: gewichtete Mischung Normal + TruncExp (Gewicht = weight); Skalierung nur aktiv ab definierter Distanz.
 # - GNSS Tunnel: vollständiger Ausfall (Outage=1); optional Hold-last-Valid bis 30 s.
 # - Korrelationsmatrix approximiert; Validierung mittels rho_tol.
+# - Regelbasierte Fusion (4 Regeln) ersetzt EKF für Systembericht; inverse Varianzgewichtung intern nur für Performance-Kennzahlen.
