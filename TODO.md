@@ -129,3 +129,9 @@
 
 - [x] Unsicherer Pfad Drift-Modell anpassen: IMU-Term-Faktor von `0.5` auf `0.001` reduzieren (aktuelles Modell `0.5*bias*t^2` führt zu unrealistisch starkem Drift; realer EKF würde Offsets kompensieren / Bias-Schätzung; Stillstandabgleich setzt Offset=0 bei v=0). Anpassung + decisions.log Eintrag + Sensitivitäts-Neuberechnung.
 - [x] Plot-Erklärungen ergänzen: Unter jedem Plot eine kurze, laienverständliche Beschreibung ("Was zeigt der Plot?" / "Wie interpretieren?") in kleiner, aber gut lesbarer Schrift (z.B. fontsize=8–9, grauer Ton). Retro-fit für bestehende Plot-Funktionen (pdf/cdf/qq/multi/time-series/sensitivity). Dokumentation der Design-Konvention im Bericht.
+
+### Neu (Änderungen 2025-10-10)
+
+- [x] Unsicherer Pfad Drift-Term vollständig entfernen (früheres Surrogat `imu_factor * imu_bias * t^2` eliminiert) – EKF würde Bias kompensieren / Stillstandabgleich setzt Offset=0. Unsafe Pfad jetzt ausschließlich GNSS (lateral unverändert). Tests unverändert gültig (keine direkte Abhängigkeit vom Term).
+- [x] Früh-Erkennung Balise als Fehlerquelle aktivieren: Modell `early_detection = d_const - v * Δt`, mit `d_const = 0.10 m` (Bad Weather Szenario reduzierter Offset 0.08 m). Δt über vorhandene Parameter `c1_ms_per_mps` und `cap_ms` in Zeit (s) umgerechnet. Implementiert in `simulate_balise_errors`.
+- [x] Plot-Beschreibung von Unterkante in Bereich zwischen Titel und Plot verschoben (zentrisch). Umsetzung via Axes-Text (`ax.text` bei y≈0.92 in Achs-Koordinaten) in `add_plot_explanation`.

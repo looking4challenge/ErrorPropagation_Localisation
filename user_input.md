@@ -73,6 +73,8 @@ Sag gern Bescheid, falls Du:
 Soll ich Dir gleich einen Patch für eine klarere Modusbenennung oder eine zusätzliche Ausgabedatei (Mode-Zusammenfassung) vorbereiten? Just let me know.
 
 
-Folgende Punkte in TODO.md aufnehmen:
-Fehlermodell für unsicheren Pfad "IMU-Term (0.5 * bias * t^2) + GNSS-Bias/-Noise" liefert unverhälnissmässigen Drift. In Realität wird durch fusion in unsicherem Pfad(ekf mit IMU,GNSS). Ausserdem sind IMU Signale offset-kompensiert über einen Stillstandabgleich (offset=0, bei v=0km/h). Setze den Drift-Term Faktor auf statt 0.5 auf 0.001.
+Folgende Punkte in TODO.md aufnehmen und abarbeiten:
+Fehlermodell für unsicheren Pfad "IMU-Term (0.001 * bias * t^2) + GNSS-Bias/-Noise" liefert unverhälnissmässigen Drift. In Realität wird durch fusion in unsicherem Pfad(ekf mit IMU,GNSS). Ausserdem sind IMU Signale offset-kompensiert über einen Stillstandabgleich (offset=0, bei v=0km/h). Entferne Drift-Term. Zusätzlich aktiviere "frühe detektion" als Fehlerquelle für die Balise in allen Szenarien. Diese quelle soll folgend modeliert werden: d_const(10cm)-standart offset bedingt durch Balisenreader-Antennencharakteristik (Kann auch durch schlechtes wetter reduzierend beinflußt werden), d_vel=v*delta_t - geschwindigkeitsabhängiger Term. Somit, early_detection = d_const - d_vel.
+In den Plots, steht die Beschreibung des plots unterhalb von eigentlichen Plot-Darstellung, es soll zwischen den Titel und der Plot-Darstellung zentriert positioniert werden. Behalte die Schrifftart. Für alle Plots übernehmen. 
+
 Ergänze jeden Plot mit einer kurzer Erklärung, Was ist es für Plot und was kann man daraus lesen(für Statistik Dummies). Plaziere diesen Text unterhalb von Titel in kleinerem, aber gut lesbaren Schrifft.

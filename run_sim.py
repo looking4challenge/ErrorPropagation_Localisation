@@ -190,6 +190,30 @@ def main():
     metrics_fused["p95_lateral"] = float(np.percentile(fused_lat, 95))
     metrics_fused["rmse_2d"] = float(np.sqrt(np.mean(fused_2d**2)))
     metrics_fused["p95_2d"] = float(np.percentile(fused_2d, 95))
+    # Early-detection Varianzbeitrag (falls aktiv): approximativ durch Abschalten d_const berechnen
+    ed_cfg = cfg.sensors.get("balise", {}).get("early_detection", {})
+    if ed_cfg.get("enabled", False):
+        d_const = ed_cfg.get("d_const_m", 0.0)
+        if d_const != 0.0:
+            # Resample balise Fehler ohne d_const Anteil (annäherungsweise: ziehe d_const term ab und recompute secure variance diff)
+            # Rekonstruiere early term näherungsweise: early_term = d_const - v*dt_adv; v Proxy ~ Uniform(0, vmax)
+            vmax = max(cfg.raw.get("morphology", {}).get("speed_range_kmh", [0,45]))/3.6
+            v_proxy = rng.uniform(0, vmax, size=n)
+            c1 = ed_cfg.get("c1_ms_per_mps", 0.5)/1000.0
+            cap_s = ed_cfg.get("cap_ms", 4.0)/1000.0
+            dt_adv = np.minimum(c1 * v_proxy, cap_s)
+            early_term = d_const - v_proxy * dt_adv
+            # bal ohne early (approx) = bal - early_term
+            bal_no_early = bal - early_term
+            secure_no_early = bal_no_early + odo + map_err
+            fused_no_early = secure_no_early/2.0 + unsafe/2.0  # einfacher Proxy (Fusion konstant)
+            p95_with = float(np.percentile(np.abs(fused), 95))
+            p95_without = float(np.percentile(np.abs(fused_no_early), 95))
+            metrics_fused["early_detection_p95_delta_m"] = float(p95_with - p95_without)
+            metrics_fused["early_detection_p95_rel_pct"] = float(100.0 * (p95_with - p95_without) / p95_without) if p95_without>0 else float('nan')
+            var_sec = float(np.var(secure))
+            var_sec_no = float(np.var(secure_no_early))
+            metrics_fused["early_detection_var_contrib_pct"] = float(100.0 * (var_sec - var_sec_no) / var_sec) if var_sec>0 else float('nan')
 
     # Bootstrap CI for RMSE fused
     rmse_ci = bootstrap_ci(fused, rmse, B=int(cfg.sim.get("B_bootstrap", 200)), alpha=0.05, rng=rng)

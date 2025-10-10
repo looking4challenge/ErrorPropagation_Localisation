@@ -208,11 +208,8 @@ def simulate_time_series(cfg: Config, rng: np.random.Generator, threshold_oos: f
             gnss_current[~outage] = gnss_bias_long[~outage] + registry.sample(gnss_noise_spec, (~outage).sum(), rng)
             if with_lateral and gnss_current_lat is not None:
                 gnss_current_lat[~outage] = gnss_bias_lat[~outage] + registry.sample(gnss_noise_lat_spec, (~outage).sum(), rng)
-        # IMU position error surrogate (configurable). Original 0.5*b*t^2 deemed overly pessimistic for SIL context with bias compensation.
-        imu_factor = float(cfg.sensors.get("imu", {}).get("position_bias_factor", 0.001))
-        imu_pos_err = imu_factor * imu_bias * (t ** 2)
-
-        unsafe = gnss_current + imu_pos_err
+        # Unsicherer Pfad: Entferne früheren IMU Drift Term (Bias*t^2 Surrogat) – EKF würde Bias kompensieren / Stillstandabgleich
+        unsafe = gnss_current
         if with_lateral and gnss_current_lat is not None and unsafe_lat is not None:
             unsafe_lat = gnss_current_lat  # lateral IMU bias neglected
 

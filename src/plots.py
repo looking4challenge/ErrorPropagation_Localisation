@@ -25,22 +25,22 @@ def ensure_dir(d: str | Path):
     Path(d).mkdir(parents=True, exist_ok=True)
 
 
-def add_plot_explanation(explanation: str, fontsize: int = 8, color: str = "#666666"):
-    """Fügt eine erklärende Beschreibung unter dem aktuellen Plot hinzu.
-    
-    Parameters
-    ----------
-    explanation : str
-        Kurze, laienverständliche Erklärung des Plots
-    fontsize : int
-        Schriftgröße für die Erklärung (Standard: 8)
-    color : str
-        Textfarbe (Standard: grauer Ton)
+def add_plot_explanation(explanation: str, fontsize: int = 8, color: str = "#444444"):
+    """Platziert eine erklärende Beschreibung zentriert zwischen Titel und Plot-Fläche.
+
+    Umsetzung: Nutzung von axes-koordinaten (ax.transAxes). Position y≈0.92 (unterhalb des Titels, oberhalb Datenbereich).
+    Fallback: Falls keine aktive Axes vorhanden → keine Aktion.
     """
-    plt.figtext(0.5, 0.02, explanation, 
-                ha='center', va='bottom', 
-                fontsize=fontsize, color=color,
-                wrap=True)
+    ax = plt.gca()
+    # Reserviere etwas Platz oben
+    fig = ax.figure
+    if fig is not None:
+        try:
+            fig.subplots_adjust(top=0.80)
+        except Exception:
+            pass
+    ax.text(0.5, 0.92, explanation, ha='center', va='top', transform=ax.transAxes,
+            fontsize=fontsize, color=color, wrap=True)
 
 
 def plot_pdf(

@@ -35,10 +35,11 @@ sensors:
       std: 2.0
       lower: 6.0
       upper: 14.0
-    early_detection:        # Placeholder deaktiviert (t_early = c1 * v, cap)
-      enabled: false        # Wird nicht zur Intervallverengung genutzt bis empirisch kalibriert
+    early_detection:        # Aktiv: Modell early_detection = d_const - v * min(c1*v, cap)
+      enabled: true
       c1_ms_per_mps: 0.5
       cap_ms: 4.0
+      d_const_m: 0.10
     antenna_offset_m:
       dist: normal
       mean: 0.0

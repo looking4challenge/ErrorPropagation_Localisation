@@ -51,6 +51,7 @@ def default_oat_params(cfg: Config) -> List[str]:
         "sensors.map.longitudinal.ref_error.std",
         "sensors.balise.latency_ms.std",
         "sensors.balise.multipath_tail_m.cap",
+        "sensors.balise.early_detection.d_const_m",
         "sensors.odometry.drift_per_km_m",
         "sensors.imu.accel_bias_mps2.std",
     ]

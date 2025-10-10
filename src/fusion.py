@@ -245,8 +245,8 @@ def rule_based_fusion_step(
   midpoint = 0.5 * (lower + upper)
   target = np.empty(n)
   target[mode == MODE_UNSAFE] = np.clip(unsafe[mode == MODE_UNSAFE], lower[mode == MODE_UNSAFE], upper[mode == MODE_UNSAFE])
-  # Clamp secure path for UNSAFE_CLAMPED
-  target[mode == MODE_UNSAFE_CLAMPED] = np.clip(secure[mode == MODE_UNSAFE_CLAMPED], lower[mode == MODE_UNSAFE_CLAMPED], upper[mode == MODE_UNSAFE_CLAMPED])
+  # Clamp UNSAFE path when out-of-bounds to nearest boundary (was secure path previously)
+  target[mode == MODE_UNSAFE_CLAMPED] = np.clip(unsafe[mode == MODE_UNSAFE_CLAMPED], lower[mode == MODE_UNSAFE_CLAMPED], upper[mode == MODE_UNSAFE_CLAMPED])
   # Midpoint
   target[mode == MODE_MIDPOINT] = midpoint[mode == MODE_MIDPOINT]
 
@@ -255,6 +255,9 @@ def rule_based_fusion_step(
   # Initialise blend counters for changed samples
   newly_changed = changed & (blend_steps > 1)
   blend_left[newly_changed] = blend_steps
+  # If target mode is UNSAFE_CLAMPED force immediate clamp (no blending) for safety determinism
+  force_clamp = (mode == MODE_UNSAFE_CLAMPED) & newly_changed
+  blend_left[force_clamp] = 0
 
   fused = np.empty(n)
   if blend_steps <= 1:
@@ -266,7 +269,26 @@ def rule_based_fusion_step(
     # For active, compute alpha from remaining steps
     # When blend_left==blend_steps -> alpha=0 (start), when reaches 1 -> alpha≈(blend_steps-1)/blend_steps
     alpha = 1.0 - (blend_left[active] - 1) / blend_steps
-    fused[active] = (1 - alpha) * fused_prev[active] + alpha * target[active]
+    proposed = (1 - alpha) * fused_prev[active] + alpha * target[active]
+    # Enforce theoretical max per-step delta <= |target-start|/blend_steps (applied w.r.t original start per transition)
+    # Approximate original start as previous fused when blend counter just initialized (blend_left==blend_steps)
+    start_mask = blend_left[active] == blend_steps
+    # store starts for those newly active
+    if not hasattr(state, 'blend_start'):
+      state.blend_start = np.copy(fused_prev)  # type: ignore
+    # update start where transition just began
+    if np.any(start_mask):
+      # Map active indices
+      active_idx = np.nonzero(active)[0]
+      state.blend_start[active_idx[start_mask]] = fused_prev[active_idx[start_mask]]  # type: ignore
+    # Compute per-step cap
+    active_idx = np.nonzero(active)[0]
+    start_vals = state.blend_start[active_idx]  # type: ignore
+    total_delta = target[active] - start_vals
+    max_step = np.abs(total_delta) / max(1, blend_steps)
+    real_delta = proposed - fused_prev[active]
+    capped = np.clip(real_delta, -max_step, max_step)
+    fused[active] = fused_prev[active] + capped
     # Non-active simply target
     fused[~active] = target[~active]
     # Decrement counters (but not below 0)
@@ -285,6 +307,9 @@ def rule_based_fusion_step(
   }
 
   new_state = RuleFusionState(fused=fused, mode=mode, blend_left=blend_left)
+  # persist blend_start if present
+  if hasattr(state, 'blend_start'):
+    new_state.blend_start = state.blend_start  # type: ignore
   return fused, new_state, meta
 
 

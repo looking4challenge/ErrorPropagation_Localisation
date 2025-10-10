@@ -28,7 +28,7 @@ correlations:
 sensors:
   balise:
     latency_ms: {dist: trunc_normal, mean: 11.0, std: 2.5, lower: 6.0, upper: 16.0}  # leicht erhöhte Latenz & Varianz
-    early_detection: {enabled: false, c1_ms_per_mps: 0.5, cap_ms: 4.0}
+    early_detection: {enabled: true, c1_ms_per_mps: 0.5, cap_ms: 4.0, d_const_m: 0.08}  # schlechteres Wetter reduziert wirksamen Offset
     antenna_offset_m: {dist: normal, mean: 0.0, std: 0.022}  # leichte zusätzliche Instabilität
     em_disturbance_m: {dist: rayleigh, sigma: 0.014}         # mehr EM-Störung
     multipath_tail_m: {dist: trunc_exp, lambda: 0.04, cap: 0.10, weight: 0.25}  # stärkerer Tail

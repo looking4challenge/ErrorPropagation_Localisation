@@ -24,6 +24,17 @@ def simulate_balise_errors(cfg: Config, n: int, rng: np.random.Generator) -> np.
     v = rng.uniform(0, 16.7, size=n)
     heavy = sample_mixture(np.zeros(n), multipath, bal["multipath_tail_m"]["weight"], rng)
     err_long = v * latency + antenna + em + heavy + weather
+    # Early detection model: d_const - v * delta_t  (delta_t limited by cap)
+    ed_cfg = bal.get("early_detection", {})
+    if ed_cfg.get("enabled", False):
+        c1 = float(ed_cfg.get("c1_ms_per_mps", 0.0)) / 1000.0  # convert ms/(m/s) -> s/(m/s) = s^2/m
+        cap_ms = float(ed_cfg.get("cap_ms", 0.0))
+        cap_s = cap_ms / 1000.0
+        d_const = float(ed_cfg.get("d_const_m", 0.0))  # constant early trigger advance in meters
+        # Effective time advance per sample (s) limited by cap
+        dt_adv = np.minimum(c1 * v, cap_s)
+        early_term = d_const - v * dt_adv
+        err_long += early_term
     return err_long
 
 
@@ -127,8 +138,14 @@ def simulate_odometry_segment_error(cfg: Config, n: int, rng: np.random.Generato
 def simulate_imu_bias_position_error(cfg: Config, n: int, rng: np.random.Generator, duration_s: float = 10.0) -> np.ndarray:
     imu = cfg.sensors["imu"]
     accel_bias = registry.sample(imu["accel_bias_mps2"], n, rng)
-    # Simple double integration error: 0.5 * b * t^2
-    return 0.5 * accel_bias * duration_s ** 2
+    # Reparametrisiertes (reduziertes) Modell:
+    # Ursprünglich: 0.5 * b * t^2 erzeugt unrealistisch große Drift (Quadratwachstum),
+    # obwohl im realen EKF der Bias regelmäßig (Stillstand / ZUPT / Filter) kompensiert wird.
+    # Neues vereinfachtes Surrogat: linear skalierter Residualpositionsfehler nach partieller Kompensation.
+    # position_bias_factor (konfigurierbar) bestimmt effektive Projektion des Bias in die Positionsdomäne.
+    # -> error ≈ factor * b * t   (kein t^2).
+    factor = float(imu.get("position_bias_factor", 0.001))
+    return factor * accel_bias * duration_s
 
 
 def combine_2d(long: np.ndarray, lat: np.ndarray) -> np.ndarray:
