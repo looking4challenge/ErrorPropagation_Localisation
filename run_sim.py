@@ -34,6 +34,7 @@ from src.plots import (
     plot_qq,
     plot_multi_pdf,
     plot_multi_cdf,
+    add_plot_explanation,
     COLORS,
 )
 from src.time_sim import simulate_time_series
@@ -293,30 +294,44 @@ def main():
         fig_dir.mkdir(parents=True, exist_ok=True)
 
         # Kernplots immer
-        plot_pdf(fused, fig_dir / "fused_pdf.png", title="Fusionierter Positionsfehler – PDF", color=COLORS.get("fused"))
-        plot_cdf(fused, fig_dir / "fused_cdf.png", title="Fusionierter Positionsfehler – CDF", color=COLORS.get("fused"))
-        plot_multi_pdf({"secure": secure, "unsafe": unsafe, "fused": fused}, fig_dir / "paths_pdf.png", title="Pfadvergleich Sicher / Unsicher / Fusion – PDF")
+        plot_pdf(fused, fig_dir / "fused_pdf.png", title="Fusionierter Positionsfehler – PDF", color=COLORS.get("fused"),
+                 explanation="Gesamtverteilung des fusionierten Positionsfehlers nach Kombination aller Sensorquellen. Zeigt die erreichte Systemgenauigkeit.")
+        plot_cdf(fused, fig_dir / "fused_cdf.png", title="Fusionierter Positionsfehler – CDF", color=COLORS.get("fused"),
+                 explanation="Kumulative Verteilung des fusionierten Fehlers. Ermöglicht direktes Ablesen von Perzentilen für Risikoanalysen.")
+        plot_multi_pdf({"secure": secure, "unsafe": unsafe, "fused": fused}, fig_dir / "paths_pdf.png", title="Pfadvergleich Sicher / Unsicher / Fusion – PDF",
+                       explanation="Direkter Vergleich der drei Fusionspfade. Zeigt Genauigkeitsunterschiede und Robustheit der verschiedenen Ansätze.")
         plot_multi_cdf(
             {"secure": secure, "unsafe": unsafe, "fused": fused},
             fig_dir / "paths_cdf.png",
             title="Pfadvergleich Sicher / Unsicher / Fusion – CDF",
+            explanation="Kumulative Verteilungen der Fusionspfade. Zeigt Wahrscheinlichkeiten für verschiedene Fehlerschwellen."
         )
 
         # GNSS mode comparison
         if len(gnss_modes_samples) > 1:
-            plot_multi_pdf(gnss_modes_samples, fig_dir / "gnss_modes_pdf.png", title="GNSS Modi – PDF Vergleich")
-            plot_multi_cdf(gnss_modes_samples, fig_dir / "gnss_modes_cdf.png", title="GNSS Modi – CDF Vergleich")
+            plot_multi_pdf(gnss_modes_samples, fig_dir / "gnss_modes_pdf.png", title="GNSS Modi – PDF Vergleich",
+                           explanation="Vergleich der GNSS-Genauigkeit in verschiedenen Umgebungen (Open/Urban/Tunnel). Zeigt Degradation durch Mehrwege-Effekte.")
+            plot_multi_cdf(gnss_modes_samples, fig_dir / "gnss_modes_cdf.png", title="GNSS Modi – CDF Vergleich",
+                           explanation="Kumulative GNSS-Fehlerverteilungen nach Umgebungstyp. Open = beste Genauigkeit, Tunnel = schlechteste.")
 
         if not args.minimal_plots:
             # Detailplots nur wenn nicht minimal
-            plot_qq(fused, fig_dir / "fused_qq.png", title="Fusionierter Positionsfehler – QQ")
-            plot_pdf(secure, fig_dir / "secure_pdf.png", title="Sicherer Pfad – PDF", color=COLORS.get("secure"))
-            plot_pdf(unsafe, fig_dir / "unsafe_pdf.png", title="Unsicherer Pfad – PDF", color=COLORS.get("unsafe"))
-            plot_pdf(bal, fig_dir / "balise_pdf.png", title="Balise Fehler – PDF", color=COLORS.get("balise"))
-            plot_pdf(map_err, fig_dir / "map_pdf.png", title="Kartenfehler – PDF", color=COLORS.get("map"))
-            plot_pdf(odo, fig_dir / "odometry_pdf.png", title="Odometrie Drift/Segmentfehler – PDF", color=COLORS.get("odometry"))
-            plot_multi_pdf({"balise": bal, "map": map_err, "odometry": odo}, fig_dir / "core_components_pdf.png", title="Kernkomponenten Balise/Map/Odometrie – PDF Vergleich")
-            plot_multi_cdf({"balise": bal, "map": map_err, "odometry": odo}, fig_dir / "core_components_cdf.png", title="Kernkomponenten Balise/Map/Odometrie – CDF Vergleich")
+            plot_qq(fused, fig_dir / "fused_qq.png", title="Fusionierter Positionsfehler – QQ",
+                    explanation="Validierung der Normalverteilungs-Annahme für den fusionierten Fehler. Wichtig für statistische Konfidenzintervalle.")
+            plot_pdf(secure, fig_dir / "secure_pdf.png", title="Sicherer Pfad – PDF", color=COLORS.get("secure"),
+                     explanation="Verteilung des sicheren Fusionspfads. Typischerweise konservativer aber zuverlässiger als der unsichere Pfad.")
+            plot_pdf(unsafe, fig_dir / "unsafe_pdf.png", title="Unsicherer Pfad – PDF", color=COLORS.get("unsafe"),
+                     explanation="Verteilung des unsicheren Fusionspfads. Potentiell genauer aber weniger robust bei Sensorausfällen.")
+            plot_pdf(bal, fig_dir / "balise_pdf.png", title="Balise Fehler – PDF", color=COLORS.get("balise"),
+                     explanation="Fehlerverteilung der Balisenerkennung. Beinhaltet Positionsunsicherheiten und Detection-Ausfälle.")
+            plot_pdf(map_err, fig_dir / "map_pdf.png", title="Kartenfehler – PDF", color=COLORS.get("map"),
+                     explanation="Kartenbezogene Referenzfehler. Basiert auf Genauigkeit der hinterlegten Gleisgeometrie.")
+            plot_pdf(odo, fig_dir / "odometry_pdf.png", title="Odometrie Drift/Segmentfehler – PDF", color=COLORS.get("odometry"),
+                     explanation="Odometriefehler durch Radsatzschlupf und Skalierungsfehler. Akkumuliert über Fahrstrecke.")
+            plot_multi_pdf({"balise": bal, "map": map_err, "odometry": odo}, fig_dir / "core_components_pdf.png", title="Kernkomponenten Balise/Map/Odometrie – PDF Vergleich",
+                           explanation="Vergleich der Hauptfehlerquellen. Zeigt relative Beiträge zur Gesamtunsicherheit und unterschiedliche Fehlercharakteristiken.")
+            plot_multi_cdf({"balise": bal, "map": map_err, "odometry": odo}, fig_dir / "core_components_cdf.png", title="Kernkomponenten Balise/Map/Odometrie – CDF Vergleich",
+                           explanation="Kumulative Verteilungen der Kernkomponenten. Ermöglicht direkten Vergleich von Perzentilen und Ausfallwahrscheinlichkeiten.")
 
         # Legendentabelle (RMSE & P95) für alle bekannten Komponenten
         legend_rows = []
@@ -375,6 +390,18 @@ def main():
             stats_df.to_csv(out_dir / "fusion_mode_stats.csv", index=False)
             if ts_res.switch_rate is not None:
                 pd.DataFrame({"t_s": ts_res.times[:len(ts_res.switch_rate)], "switch_rate": ts_res.switch_rate}).to_csv(out_dir / "fusion_switch_rate.csv", index=False)
+            # Effizienzsummary (Safety Audit): mittlere Nutzung unsafe, Anteil clamped, Verhältnis unsafe / (unsafe+clamped)
+            mean_mid = float(np.mean(ts_res.mode_share['midpoint']))
+            mean_uns = float(np.mean(ts_res.mode_share['unsafe']))
+            mean_uns_cl = float(np.mean(ts_res.mode_share['unsafe_clamped']))
+            eff_rows = [{
+                "mean_share_midpoint": mean_mid,
+                "mean_share_unsafe": mean_uns,
+                "mean_share_unsafe_clamped": mean_uns_cl,
+                "unsafe_utilisation_ratio": mean_uns / (mean_uns + mean_uns_cl) if (mean_uns + mean_uns_cl) > 0 else float('nan'),
+                "clamp_over_all_ratio": mean_uns_cl / (mean_mid + mean_uns + mean_uns_cl),
+            }]
+            pd.DataFrame(eff_rows).to_csv(out_dir / "fusion_mode_efficiency_summary.csv", index=False)
             # Derived average mode residence time (approx) = dt / switch_rate where switch_rate>0 else NaN
             if ts_res.switch_rate is not None and len(ts_res.switch_rate) > 0:
                 import numpy as _np
@@ -399,18 +426,24 @@ def main():
             plt.plot(ts_res.times, ts_res.p95, label="P95 [m]")
             plt.xlabel("Zeit t [s]"); plt.ylabel("Positionsfehler [m]")
             plt.title("Zeitverlauf Fusionspfad – RMSE & P95")
-            plt.legend(); plt.tight_layout(); plt.savefig(fig_dir/"fused_time_metrics.png", dpi=150); plt.close()
+            plt.legend()
+            add_plot_explanation("Zeitliche Entwicklung der Positionsgenauigkeit. RMSE zeigt den mittleren Fehler, P95 das 95%-Perzentil. Anstieg über Zeit durch akkumulierende Unsicherheiten.")
+            plt.tight_layout(); plt.savefig(fig_dir/"fused_time_metrics.png", dpi=150, bbox_inches='tight'); plt.close()
             plt.figure(figsize=(6,3))
             plt.plot(ts_res.times, ts_res.var_secure, label="Var sicher [m²]")
             plt.plot(ts_res.times, ts_res.var_unsafe, label="Var unsicher [m²]")
             plt.xlabel("Zeit t [s]"); plt.ylabel("Varianz [m²]")
             plt.title("Komponenten-Varianzen über Zeit")
-            plt.legend(); plt.tight_layout(); plt.savefig(fig_dir/"component_variances.png", dpi=150); plt.close()
+            plt.legend()
+            add_plot_explanation("Varianzentwicklung der sicheren vs. unsicheren Fusionskomponenten. Höhere Varianz bedeutet größere Unsicherheit. Unterschiede zeigen Qualitätsunterschiede der Pfade.")
+            plt.tight_layout(); plt.savefig(fig_dir/"component_variances.png", dpi=150, bbox_inches='tight'); plt.close()
             plt.figure(figsize=(6,3))
             plt.plot(ts_res.times, ts_res.share_oos, label="> Schwelle")
             plt.xlabel("Zeit t [s]"); plt.ylabel("Anteil [-]")
             plt.title("Out-of-Spec Anteil (|Fehler| > Schwelle)")
-            plt.legend(); plt.tight_layout(); plt.savefig(fig_dir/"share_out_of_spec.png", dpi=150); plt.close()
+            plt.legend()
+            add_plot_explanation("Anteil der Messungen, die eine kritische Fehlerschwelle überschreiten. Werte nahe 0 sind gut, höhere Werte deuten auf Systemüberlastung hin.")
+            plt.tight_layout(); plt.savefig(fig_dir/"share_out_of_spec.png", dpi=150, bbox_inches='tight'); plt.close()
             if ts_res.rmse_lat is not None:
                 plt.figure(figsize=(6,3))
                 plt.plot(ts_res.times, ts_res.rmse_lat, label="RMSE_lat [m]")
@@ -418,7 +451,9 @@ def main():
                     plt.plot(ts_res.times, ts_res.rmse_2d, label="RMSE_2D [m]")
                 plt.xlabel("Zeit t [s]"); plt.ylabel("Fehler [m]")
                 plt.title("Zeitverlauf Lateral & 2D RMSE")
-                plt.legend(); plt.tight_layout(); plt.savefig(fig_dir/"fused_time_lat_2d.png", dpi=150); plt.close()
+                plt.legend()
+                add_plot_explanation("Zeitliche Entwicklung der lateralen (quer zur Fahrtrichtung) und 2D-Gesamtfehler. Laterale Fehler sind meist kleiner als longitudinale.")
+                plt.tight_layout(); plt.savefig(fig_dir/"fused_time_lat_2d.png", dpi=150, bbox_inches='tight'); plt.close()
             # Secure interval growth plot
             if (
                 ts_res.si_times is not None and ts_res.si_additive_p99 is not None
@@ -437,13 +472,15 @@ def main():
                 plt.xlabel("Zeit t [s]"); plt.ylabel("Intervallhalbbreite [m]")
                 plt.title("Secure Intervall Wachstum (P99)")
                 plt.legend(); plt.grid(alpha=0.25, linestyle=":")
-                plt.tight_layout(); plt.savefig(fig_dir/"secure_interval_growth.png", dpi=150); plt.close()
+                add_plot_explanation("Wachstum der sicheren Intervallgrenzen über Zeit. Additive Schätzung ist konservativer (höher) als die exakte Monte-Carlo-Faltung (Joint P99).")
+                plt.tight_layout(); plt.savefig(fig_dir/"secure_interval_growth.png", dpi=150, bbox_inches='tight'); plt.close()
                 plt.figure(figsize=(6.2,3.2))
                 plt.plot(ts_res.si_times, ts_res.si_bias_pct, label="Bias [%]", color="#7570b3")
                 plt.xlabel("Zeit t [s]"); plt.ylabel("Additiv Bias [%]")
                 plt.title("Additive vs. Joint P99 Bias Verlauf")
                 plt.legend(); plt.grid(alpha=0.25, linestyle=":")
-                plt.tight_layout(); plt.savefig(fig_dir/"secure_interval_bias.png", dpi=150); plt.close()
+                add_plot_explanation("Prozentuale Überschätzung der additiven P99-Methode gegenüber der exakten Monte-Carlo-Verteilung. Positive Werte zeigen konservative Überschätzung.")
+                plt.tight_layout(); plt.savefig(fig_dir/"secure_interval_bias.png", dpi=150, bbox_inches='tight'); plt.close()
             # Fusion mode shares stacked area
             if args.fusion_stats and ts_res.mode_share is not None:
                 plt.figure(figsize=(6.4,3.2))
@@ -457,7 +494,8 @@ def main():
                 plt.xlabel("Zeit t [s]"); plt.ylabel("Anteil [-]")
                 plt.title("Fusionsmodusanteile über Zeit")
                 plt.legend(loc='upper right', fontsize=8)
-                plt.tight_layout(); plt.savefig(fig_dir/"fusion_mode_share.png", dpi=150); plt.close()
+                add_plot_explanation("Relative Nutzung der Fusionsmodi über Zeit. Midpoint = sichere Fallback-Position, unsafe = optimale aber risikoreiche Schätzung, unsafe_clamped = begrenzte Risikoschätzung.")
+                plt.tight_layout(); plt.savefig(fig_dir/"fusion_mode_share.png", dpi=150, bbox_inches='tight'); plt.close()
             # Interval bounds plot longitudinal (sample subset median bounds)
             if ts_res.interval_lower is not None and ts_res.interval_upper is not None:
                 # Show fused vs median lower/upper & midpoint
@@ -476,7 +514,8 @@ def main():
                 plt.xlabel("Sample (sortiert nach midpoint)")
                 plt.title("Asymmetrische Intervallgrenzen Snapshot")
                 plt.legend(fontsize=8)
-                plt.tight_layout(); plt.savefig(fig_dir/"fused_time_interval_bounds.png", dpi=150); plt.close()
+                add_plot_explanation("Momentaufnahme der asymmetrischen Intervallgrenzen. Midpoint = mittlere Position, lower/upper = geschwindigkeitsabhängige Vertrauensgrenzen. Asymmetrie zeigt richtungsabhängige Unsicherheiten.")
+                plt.tight_layout(); plt.savefig(fig_dir/"fused_time_interval_bounds.png", dpi=150, bbox_inches='tight'); plt.close()
         # Optional performance benchmark vs. legacy
         if args.perf:
             # Short legacy run (disable rule based & adaptive)
@@ -525,7 +564,8 @@ def main():
             plt.yticks(y_pos, ylabels)
             plt.xlabel("|ΔRMSE| max(±) [%]")
             plt.title(f"OAT Sensitivität (±{delta_pct:.1f}% Perturbation)")
-            plt.tight_layout(); plt.savefig(Path(args.figdir)/"oat_bar.png", dpi=150); plt.close()
+            add_plot_explanation("One-At-a-Time Sensitivitätsanalyse: Zeigt den Einfluss einzelner Parameter auf den Gesamtfehler. Längere Balken bedeuten kritischere Parameter für die Systemgenauigkeit.")
+            plt.tight_layout(); plt.savefig(Path(args.figdir)/"oat_bar.png", dpi=150, bbox_inches='tight'); plt.close()
 
     # Extended OAT 2D Sensitivity
     if getattr(args, 'oat_2d', False):
@@ -545,7 +585,8 @@ def main():
             plt.xlabel("Max |Δ| über Metriken [%]")
             plt.title(f"OAT 2D Sensitivität (±{delta_pct:.1f}%) – Gesamt")
             plt.grid(alpha=0.25, linestyle=":")
-            plt.tight_layout(); plt.savefig(Path(args.figdir)/"oat_2d_overall_bar.png", dpi=150); plt.close()
+            add_plot_explanation("2D-Sensitivitätsanalyse: Maximaler Einfluss jedes Parameters über alle Metriken (longitudinal, lateral, 2D-Gesamt). Wichtige Parameter für multidimensionale Systemoptimierung.")
+            plt.tight_layout(); plt.savefig(Path(args.figdir)/"oat_2d_overall_bar.png", dpi=150, bbox_inches='tight'); plt.close()
             # Per-Metrik Vergleich (gruppenweise Balken): nur falls Effekte vorhanden
             metric_keys = [
                 ("rmse_long", "abs_effect_rmse_long_pct"),
@@ -581,7 +622,8 @@ def main():
                 plt.title("OAT 2D – Aufgeschlüsselte Effekte je Metrik")
                 plt.grid(alpha=0.25, linestyle=":")
                 plt.legend(fontsize=8, ncol=2)
-                plt.tight_layout(); plt.savefig(Path(args.figdir)/"oat_2d_per_metric.png", dpi=150); plt.close()
+                add_plot_explanation("Detailaufschlüsselung der Parametereffekte nach Metriken. Zeigt, welche Parameter hauptsächlich longitudinale, laterale oder 2D-Gesamtfehler beeinflussen.")
+                plt.tight_layout(); plt.savefig(Path(args.figdir)/"oat_2d_per_metric.png", dpi=150, bbox_inches='tight'); plt.close()
 
     # Additive vs Joint P99 Bias Sensitivity
     if getattr(args, 'p99_bias_sens', False):
@@ -601,7 +643,8 @@ def main():
             plt.xlabel("Max |Δ Bias| [%-Pkt]")
             plt.title(f"Additive vs Joint P99 Bias Sensitivität (±{delta_pct:.1f}%)")
             plt.grid(alpha=0.25, linestyle=":")
-            plt.tight_layout(); plt.savefig(Path(args.figdir)/"sensitivity_additive_p99_bias.png", dpi=150); plt.close()
+            add_plot_explanation("Sensitivität der Bias-Unterschätzung zwischen additiver und exakter P99-Berechnung. Höhere Werte zeigen Parameter mit starkem Einfluss auf die Konservativität der Methode.")
+            plt.tight_layout(); plt.savefig(Path(args.figdir)/"sensitivity_additive_p99_bias.png", dpi=150, bbox_inches='tight'); plt.close()
 
     # Lean Erweiterung: SRC + PRCC + Quantil & Exceedance Analysen
     if args.src_prcc or args.quantile_conditioning or args.exceedance:
@@ -638,7 +681,8 @@ def main():
                 plt.title('Sensitivität SRC vs. PRCC – RMSE_long')
                 plt.legend()
                 plt.grid(alpha=0.25, linestyle=':')
-                plt.tight_layout(); plt.savefig(Path(args.figdir)/'sensitivity_src_prcc_rmse_long.png', dpi=150); plt.close()
+                add_plot_explanation("Vergleich lineare (SRC) vs. monotone (PRCC) Korrelationsmaße. SRC misst direkte lineare Effekte, PRCC berücksichtigt auch nicht-lineare monotone Zusammenhänge.")
+                plt.tight_layout(); plt.savefig(Path(args.figdir)/'sensitivity_src_prcc_rmse_long.png', dpi=150, bbox_inches='tight'); plt.close()
                 # Scatter Vergleich
                 plt.figure(figsize=(4.2,4))
                 plt.scatter(src_vals, prcc_vals, c=np.arange(len(order)), cmap='viridis', s=60, edgecolors='k')
@@ -652,7 +696,8 @@ def main():
                 plt.axvline(0, color='#666', linewidth=0.7, linestyle=':')
                 plt.title('SRC vs. PRCC Streudiagramm')
                 plt.grid(alpha=0.25, linestyle=':')
-                plt.tight_layout(); plt.savefig(Path(args.figdir)/'sensitivity_src_vs_prcc_scatter.png', dpi=150); plt.close()
+                add_plot_explanation("Direkter Vergleich SRC vs. PRCC Koeffizienten. Punkte nahe der Diagonale zeigen ähnliche lineare/monotone Effekte, Abweichungen deuten auf Nicht-Linearitäten hin.")
+                plt.tight_layout(); plt.savefig(Path(args.figdir)/'sensitivity_src_vs_prcc_scatter.png', dpi=150, bbox_inches='tight'); plt.close()
         if args.quantile_conditioning:
             qres = quantile_conditioning(fused, component_map, p=args.quantile_p)
             pd.DataFrame(qres).to_csv(out_dir / f"sensitivity_quantile_p{int(args.quantile_p)}.csv", index=False)
@@ -668,7 +713,8 @@ def main():
                 plt.xlabel(f"ΔQ{int(args.quantile_p)} [m]")
                 plt.title(f"Quantil-Sensitivität ΔQ{int(args.quantile_p)} (High−Low)")
                 plt.grid(alpha=0.25, linestyle=':')
-                plt.tight_layout(); plt.savefig(Path(args.figdir)/f'sensitivity_delta_q{int(args.quantile_p)}.png', dpi=150); plt.close()
+                add_plot_explanation(f"Sensitivität des {int(args.quantile_p)}%-Perzentils auf Parametervariationen. Zeigt, welche Parameter die extremeren Fehlerwerte am stärksten beeinflussen.")
+                plt.tight_layout(); plt.savefig(Path(args.figdir)/f'sensitivity_delta_q{int(args.quantile_p)}.png', dpi=150, bbox_inches='tight'); plt.close()
         if args.exceedance:
             thr = args.exceedance_threshold
             if thr is None:
@@ -686,7 +732,8 @@ def main():
                 plt.xlabel('ΔP(|e|>T) [%-Pkt]')
                 plt.title(f'Exceedance Sensitivität ΔP(|e|>{thr:.3f} m)')
                 plt.grid(alpha=0.25, linestyle=':')
-                plt.tight_layout(); plt.savefig(Path(args.figdir)/f'sensitivity_exceedance_T{thr:.3f}_bar.png', dpi=150); plt.close()
+                add_plot_explanation(f"Sensitivität der Überschreitungswahrscheinlichkeit für Schwellwert {thr:.3f}m. Zeigt, welche Parameter die Wahrscheinlichkeit kritischer Fehler am stärksten beeinflussen.")
+                plt.tight_layout(); plt.savefig(Path(args.figdir)/f'sensitivity_exceedance_T{thr:.3f}_bar.png', dpi=150, bbox_inches='tight'); plt.close()
 
     # ES95 Expected Shortfall Conditioning (nach Basis-Metriken & Komponenten Samples)
     if args.es95:
@@ -711,7 +758,8 @@ def main():
                 plt.xlabel('ΔES95 [m]')
                 plt.title('ES95 Sensitivität (High−Low)')
                 plt.grid(alpha=0.25, linestyle=':')
-                plt.tight_layout(); plt.savefig(Path(args.figdir)/'sensitivity_es95_bar.png', dpi=150); plt.close()
+                add_plot_explanation("Expected Shortfall 95% Sensitivität: Misst den Einfluss auf den mittleren Fehler der schlimmsten 5% Fälle. Wichtig für Worst-Case-Risikobewertung.")
+                plt.tight_layout(); plt.savefig(Path(args.figdir)/'sensitivity_es95_bar.png', dpi=150, bbox_inches='tight'); plt.close()
 
     # Sobol Analyse (am Ende – teurer Schritt)
     if args.sobol:
@@ -819,7 +867,8 @@ def main():
                                 plt.xlabel('mean_ST (refined)')
                                 plt.title('Sobol Refined Top-N')
                                 plt.grid(alpha=0.25, linestyle=':')
-                                plt.tight_layout(); plt.savefig(Path(args.figdir)/'sensitivity_sobol_refined_meanST.png', dpi=150); plt.close()
+                                add_plot_explanation("Verfeinerte Sobol-Analyse der wichtigsten Parameter. Zeigt Total-Effekt-Indizes (ST) mit höherer Auflösung für die sensitivsten Parameter.")
+                                plt.tight_layout(); plt.savefig(Path(args.figdir)/'sensitivity_sobol_refined_meanST.png', dpi=150, bbox_inches='tight'); plt.close()
                     except Exception as e_ref:
                         print(f"Sobol Refinement Fehler (ignoriert): {e_ref}")
             if not args.no_plots:
@@ -836,7 +885,8 @@ def main():
                     plt.xlabel('Index [-]')
                     plt.title(f'Sobol Indizes – {mname}')
                     plt.legend(); plt.grid(alpha=0.25, linestyle=':')
-                    plt.tight_layout(); plt.savefig(Path(args.figdir)/f'sensitivity_sobol_{mname}.png', dpi=150); plt.close()
+                    add_plot_explanation("Sobol-Sensitivitätsindizes: S1 = Haupteffekt (nur dieser Parameter), ST = Totaleffekt (inklusive Wechselwirkungen). ST>S1 deutet auf Parameterinteraktionen hin.")
+                    plt.tight_layout(); plt.savefig(Path(args.figdir)/f'sensitivity_sobol_{mname}.png', dpi=150, bbox_inches='tight'); plt.close()
         except RuntimeError as e:
             print(f"Sobol Analyse übersprungen: {e}")
 

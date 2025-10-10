@@ -124,3 +124,8 @@
 - [x] Konvergenz-Traces (RMSE/P95/P99/ES95) Export (--convergence)
 - [ ] Early Detection Evaluierung (nur wenn Daten verfügbar) – separater Metrics-Block early_detection_eval.json
 - [ ] Dokumentation Stress-Modi: heavy_tail_balise, wide_odo_residual, high_multipath_gnss
+
+### Neu (Safety / Modellklärung)
+
+- [x] Unsicherer Pfad Drift-Modell anpassen: IMU-Term-Faktor von `0.5` auf `0.001` reduzieren (aktuelles Modell `0.5*bias*t^2` führt zu unrealistisch starkem Drift; realer EKF würde Offsets kompensieren / Bias-Schätzung; Stillstandabgleich setzt Offset=0 bei v=0). Anpassung + decisions.log Eintrag + Sensitivitäts-Neuberechnung.
+- [x] Plot-Erklärungen ergänzen: Unter jedem Plot eine kurze, laienverständliche Beschreibung ("Was zeigt der Plot?" / "Wie interpretieren?") in kleiner, aber gut lesbarer Schrift (z.B. fontsize=8–9, grauer Ton). Retro-fit für bestehende Plot-Funktionen (pdf/cdf/qq/multi/time-series/sensitivity). Dokumentation der Design-Konvention im Bericht.

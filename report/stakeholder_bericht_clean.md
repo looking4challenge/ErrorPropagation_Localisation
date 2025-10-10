@@ -653,7 +653,21 @@ Verwendung im Bericht / Dashboard Automatisierung:
 - Für Parametertuning zusätzlich `--override-n 2000` verwenden und erst final N=10000 fahren
 - Zeitreihen nur aktivieren wenn Trendanalyse erforderlich (`--time-series`)
 
-#### 6.4.6 Erweiterungspotential
+#### 6.4.6 Plot-Beschreibungen Design-Konvention
+
+Alle generierten Plots enthalten automatisch eine laienverständliche Erklärung am unteren Rand:
+
+- **Position**: Zentriert unter dem Plot-Bereich
+- **Stil**: Schriftgröße 8, grauer Farbton (#666666)
+- **Inhalt**: Kurze Antwort auf "Was zeigt der Plot?" und "Wie interpretieren?"
+- **Beispiele**:
+  - PDF: "Wahrscheinlichkeitsverteilung der Positionsfehler. Histogram zeigt gemessene Häufigkeiten..."
+  - CDF: "Kumulative Verteilung: Zeigt für jeden Fehlerwert x die Wahrscheinlichkeit, dass der tatsächliche Fehler ≤ x ist..."
+  - Sensitivität: "One-At-a-Time Sensitivitätsanalyse: Zeigt den Einfluss einzelner Parameter auf den Gesamtfehler..."
+
+Diese Konvention erhöht die Verständlichkeit für nicht-technische Stakeholder und reduziert Interpretationsfehler.
+
+#### 6.4.7 Erweiterungspotential
 
 - Automatisches Einbetten der Legendentabelle als Markdown (Option `--export-legend-md` geplant)
 - P95 Ziel-Linie (Threshold Overlay) in PDF/CDF Plots

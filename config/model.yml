@@ -153,6 +153,7 @@ sensors:
       rw_tau_s: 900
     accel_noise_density_mps2_sqrtHz: 0.05
     gyro_noise_density_dps_sqrtHz: 0.01
+  position_bias_factor: 0.001   # Neue Konfig: Faktor für Positionierungs-Bias-Wachstum (vormals 0.5 für 0.5*bias*t^2)
   fusion:
     # Regelbasiertes 4-Regeln Schema ersetzt EKF für Systemgrenzen-Reporting.
     # Diese Parameter sind interne Surrogate für Performanceabschätzung, nicht sicherheitskritisch.

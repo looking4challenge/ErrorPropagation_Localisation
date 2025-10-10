@@ -145,6 +145,7 @@ def simulate_time_series(cfg: Config, rng: np.random.Generator, threshold_oos: f
         blend_steps = int(fusion_cfg.get("blend_steps", 5))
     update_steps = max(1, int(round(interval_update_cadence_s / dt)))
     use_rule_based = fusion_cfg.get("rule_based", False)
+    force_additive = bool(fusion_cfg.get("interval", {}).get("use_additive_global", False))
 
     # Stateful fusion initialisation (longitudinal & lateral if enabled)
     state = RuleFusionState(fused=np.zeros(n), mode=np.zeros(n, dtype=int), blend_left=np.zeros(n, dtype=int))
@@ -207,15 +208,16 @@ def simulate_time_series(cfg: Config, rng: np.random.Generator, threshold_oos: f
             gnss_current[~outage] = gnss_bias_long[~outage] + registry.sample(gnss_noise_spec, (~outage).sum(), rng)
             if with_lateral and gnss_current_lat is not None:
                 gnss_current_lat[~outage] = gnss_bias_lat[~outage] + registry.sample(gnss_noise_lat_spec, (~outage).sum(), rng)
-        # IMU position error (0.5 * b * t^2)
-        imu_pos_err = 0.5 * imu_bias * (t ** 2)
+        # IMU position error surrogate (configurable). Original 0.5*b*t^2 deemed overly pessimistic for SIL context with bias compensation.
+        imu_factor = float(cfg.sensors.get("imu", {}).get("position_bias_factor", 0.001))
+        imu_pos_err = imu_factor * imu_bias * (t ** 2)
 
         unsafe = gnss_current + imu_pos_err
         if with_lateral and gnss_current_lat is not None and unsafe_lat is not None:
             unsafe_lat = gnss_current_lat  # lateral IMU bias neglected
 
         # Adaptive interval update if rule-based active
-        if use_rule_based and adaptive_interval and (k % update_steps == 0):
+        if use_rule_based and adaptive_interval and not force_additive and (k % update_steps == 0):
             interval_cfg = fusion_cfg.get("interval", {})
             lower, upper, meta_int = compute_secure_interval_bounds(
                 secure, speeds,
@@ -228,6 +230,11 @@ def simulate_time_series(cfg: Config, rng: np.random.Generator, threshold_oos: f
             # Log warnings for instability (printed once per escalation)
             if meta_int.get("fallback_escalated"):
                 print("[warn] adaptive interval escalation to global fallback ( >20% unstable bins )")
+        # Optional erzwungene additive globale Halbbreite (konservativer Safety-Modus)
+        if use_rule_based and force_additive:
+            q_add = float(np.percentile(np.abs(secure), 99))
+            lower = -np.full(n, q_add)
+            upper = np.full(n, q_add)
         if use_rule_based:
             # Fallback: if not yet computed (first steps) use symmetric additive P99
             if lower is None or upper is None:

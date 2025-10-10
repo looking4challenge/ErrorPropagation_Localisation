@@ -71,12 +71,15 @@ sensors:
     gyro_bias_dps: {dist: normal, mean: 0.0, std: 0.024, rw_tau_s: 900}
     accel_noise_density_mps2_sqrtHz: 0.055
     gyro_noise_density_dps_sqrtHz: 0.011
+    position_bias_factor: 0.001
   fusion:
     rule_based: true
     filter_proxy: rule_based_4rules
     blend_steps: 5
     latency_ms: {dist: trunc_normal, mean: 22.0, std: 6.0, lower: 10.0, upper: 38.0}
     timestamp_jitter_ms: 6.0
+    interval:
+      use_additive_global: true
 
 secure_interval:
   method: additive_p99

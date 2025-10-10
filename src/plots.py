@@ -25,6 +25,24 @@ def ensure_dir(d: str | Path):
     Path(d).mkdir(parents=True, exist_ok=True)
 
 
+def add_plot_explanation(explanation: str, fontsize: int = 8, color: str = "#666666"):
+    """Fügt eine erklärende Beschreibung unter dem aktuellen Plot hinzu.
+    
+    Parameters
+    ----------
+    explanation : str
+        Kurze, laienverständliche Erklärung des Plots
+    fontsize : int
+        Schriftgröße für die Erklärung (Standard: 8)
+    color : str
+        Textfarbe (Standard: grauer Ton)
+    """
+    plt.figtext(0.5, 0.02, explanation, 
+                ha='center', va='bottom', 
+                fontsize=fontsize, color=color,
+                wrap=True)
+
+
 def plot_pdf(
     values: np.ndarray,
     out: Path,
@@ -32,6 +50,7 @@ def plot_pdf(
     x_label: str = "Positionsfehler [m]",
     y_label: str = "Wahrscheinlichkeitsdichte [1/m]",
     color: str | None = None,
+    explanation: str | None = None,
 ):
     """Plot empirische PDF inkl. Normalapprox. Einheiten explizit.
 
@@ -47,6 +66,8 @@ def plot_pdf(
         X-Achsenbeschriftung mit Einheit
     y_label : str
         Y-Achsenbeschriftung mit Einheit (Dichte ⇒ 1/m)
+    explanation : str | None
+        Optionale laienverständliche Erklärung des Plots
     """
     ensure_dir(out.parent)
     plt.figure(figsize=(4, 3))
@@ -67,8 +88,16 @@ def plot_pdf(
     plt.ylabel(y_label)
     plt.grid(alpha=0.25, linestyle=":")
     plt.legend()
+    
+    # Standarderklärung falls keine spezifische angegeben
+    if explanation is None:
+        explanation = "Wahrscheinlichkeitsverteilung der Positionsfehler. Histogram zeigt gemessene Häufigkeiten, gestrichelte Linie die beste Normalverteilungs-Näherung."
+    
+    if explanation:
+        add_plot_explanation(explanation)
+    
     plt.tight_layout()
-    plt.savefig(out, dpi=150)
+    plt.savefig(out, dpi=150, bbox_inches='tight')
     plt.close()
 
 
@@ -79,6 +108,7 @@ def plot_cdf(
     x_label: str = "Positionsfehler [m]",
     y_label: str = "Kumulative Verteilung F(x) [-]",
     color: str | None = None,
+    explanation: str | None = None,
 ):
     """Plot empirische CDF mit Einheiten."""
     ensure_dir(out.parent)
@@ -90,8 +120,16 @@ def plot_cdf(
     plt.xlabel(x_label)
     plt.ylabel(y_label)
     plt.grid(alpha=0.25, linestyle=":")
+    
+    # Standarderklärung falls keine spezifische angegeben
+    if explanation is None:
+        explanation = "Kumulative Verteilung: Zeigt für jeden Fehlerwert x die Wahrscheinlichkeit, dass der tatsächliche Fehler ≤ x ist. Beispiel: Bei y=0.95 kann man das 95%-Perzentil ablesen."
+    
+    if explanation:
+        add_plot_explanation(explanation)
+    
     plt.tight_layout()
-    plt.savefig(out, dpi=150)
+    plt.savefig(out, dpi=150, bbox_inches='tight')
     plt.close()
 
 
@@ -100,6 +138,7 @@ def plot_qq(
     out: Path,
     title: str = "QQ Plot",
     axis_label: str = "Positionsfehler [m]",
+    explanation: str | None = None,
 ):
     """QQ-Plot (Normal) mit metrischen Achsenbeschriftungen."""
     ensure_dir(out.parent)
@@ -112,8 +151,16 @@ def plot_qq(
     # Hilfslinien & Grid (konform mit anderen Plots)
     plt.axline((0, 0), slope=1, color="#444", linewidth=0.8, linestyle=":")
     plt.grid(alpha=0.25, linestyle=":")
+    
+    # Standarderklärung falls keine spezifische angegeben
+    if explanation is None:
+        explanation = "Quantil-Quantil-Plot: Vergleicht die gemessenen Werte mit einer Normalverteilung. Punkte nahe der Diagonale bedeuten gute Normalverteilungs-Näherung. Abweichungen zeigen Verteilungsunterschiede."
+    
+    if explanation:
+        add_plot_explanation(explanation)
+    
     plt.tight_layout()
-    plt.savefig(out, dpi=150)
+    plt.savefig(out, dpi=150, bbox_inches='tight')
     plt.close()
 
 
@@ -126,6 +173,7 @@ def plot_multi_pdf(
     max_bins: int = 70,
     show_stats: bool = True,
     kde: bool = False,
+    explanation: str | None = None,
 ):
     """Überlagerte PDFs mehrerer Komponenten (normalisierte Histogramme).
 
@@ -137,12 +185,48 @@ def plot_multi_pdf(
         Falls True, RMSE & P95 in Legende ergänzen
     kde : bool
         Optional simple Gaussian KDE (scipy) – nicht default (Performance)
+    explanation : str | None
+        Optionale laienverständliche Erklärung des Plots
     """
     ensure_dir(out.parent)
     plt.figure(figsize=(6, 3.2))
-    for name, vals in components.items():
+    # Erkennung identischer / nahezu identischer Verteilungen (vereinfacht):
+    names = list(components.keys())
+    arrays = [np.asarray(components[n]) for n in names]
+    identical_groups: list[list[int]] = []
+    visited: set[int] = set()
+    for i, base in enumerate(arrays):
+        if i in visited:
+            continue
+        group = [i]
+        base_sorted = np.sort(base)
+        for j in range(i+1, len(arrays)):
+            if j in visited:
+                continue
+            a = arrays[j]
+            if a.shape != base.shape:
+                continue
+            a_sorted = np.sort(a)
+            # Schnelle Ähnlichkeitsheuristik: max abs diff + Varianzverhältnis + KS-Statistik
+            max_diff = float(np.max(np.abs(base_sorted - a_sorted)))
+            var_base = float(np.var(base_sorted)) + 1e-15
+            var_a = float(np.var(a_sorted)) + 1e-15
+            var_ratio = max(var_base/var_a, var_a/var_base)
+            if max_diff < 1e-6 and var_ratio < 1.0005:
+                group.append(j)
+        for g in group:
+            visited.add(g)
+        identical_groups.append(group)
+
+    line_styles_cycle = ["-", "--", ":", "-."]
+    style_map: dict[int, str] = {}
+    for grp in identical_groups:
+        for k, idx in enumerate(grp):
+            style_map[idx] = line_styles_cycle[k % len(line_styles_cycle)]
+
+    for idx, name in enumerate(names):
+        vals = arrays[idx]
         c = COLORS.get(name, None)
-        # Histogram als Linie (step) für bessere Vergleichbarkeit
         hist, edges = np.histogram(vals, bins=max_bins, density=True)
         centers = 0.5 * (edges[:-1] + edges[1:])
         label = name
@@ -150,14 +234,25 @@ def plot_multi_pdf(
             rmse = np.sqrt(np.mean(vals**2))
             p95 = np.percentile(vals, 95)
             label = f"{name} (RMSE={rmse:.3f} m, P95={p95:.3f} m)"
-        plt.plot(centers, hist, label=label, color=c, linewidth=1.4)
+        if any(idx in grp and len(grp) > 1 for grp in identical_groups):
+            label += " [identisch]"
+        ls = style_map.get(idx, "-")
+        plt.plot(centers, hist, label=label, color=c, linewidth=1.4, linestyle=ls)
     plt.title(title)
     plt.xlabel(x_label)
     plt.ylabel(y_label)
     plt.legend(fontsize=8)
     plt.grid(alpha=0.25, linestyle=":")
+    
+    # Standarderklärung falls keine spezifische angegeben
+    if explanation is None:
+        explanation = "Vergleich der Fehlerverteilungen verschiedener Komponenten. Jede Linie zeigt die Wahrscheinlichkeitsdichte einer Komponente. Breitere Kurven bedeuten größere Streuung."
+    
+    if explanation:
+        add_plot_explanation(explanation)
+    
     plt.tight_layout()
-    plt.savefig(out, dpi=150)
+    plt.savefig(out, dpi=150, bbox_inches='tight')
     plt.close()
 
 
@@ -167,27 +262,72 @@ def plot_multi_cdf(
     title: str,
     x_label: str = "Positionsfehler [m]",
     y_label: str = "F(x) [-]",
+    explanation: str | None = None,
 ):
     """Überlagerte empirische CDFs."""
     ensure_dir(out.parent)
     plt.figure(figsize=(6, 3.2))
-    for name, vals in components.items():
+    names = list(components.keys())
+    arrays = [np.asarray(components[n]) for n in names]
+    identical_groups: list[list[int]] = []
+    visited: set[int] = set()
+    for i, base in enumerate(arrays):
+        if i in visited:
+            continue
+        group = [i]
+        base_sorted = np.sort(base)
+        for j in range(i+1, len(arrays)):
+            if j in visited:
+                continue
+            a = arrays[j]
+            if a.shape != base.shape:
+                continue
+            a_sorted = np.sort(a)
+            max_diff = float(np.max(np.abs(base_sorted - a_sorted)))
+            var_base = float(np.var(base_sorted)) + 1e-15
+            var_a = float(np.var(a_sorted)) + 1e-15
+            var_ratio = max(var_base/var_a, var_a/var_base)
+            if max_diff < 1e-6 and var_ratio < 1.0005:
+                group.append(j)
+        for g in group:
+            visited.add(g)
+        identical_groups.append(group)
+    line_styles_cycle = ["-", "--", ":", "-."]
+    style_map: dict[int, str] = {}
+    for grp in identical_groups:
+        for k, idx in enumerate(grp):
+            style_map[idx] = line_styles_cycle[k % len(line_styles_cycle)]
+    for idx, name in enumerate(names):
+        vals = arrays[idx]
         xs = np.sort(vals)
         ys = np.linspace(0, 1, len(xs))
         c = COLORS.get(name, None)
-        plt.plot(xs, ys, label=name, color=c, linewidth=1.4)
+        label = name
+        if any(idx in grp and len(grp) > 1 for grp in identical_groups):
+            label += " [identisch]"
+        ls = style_map.get(idx, "-")
+        plt.plot(xs, ys, label=label, color=c, linewidth=1.4, linestyle=ls)
     plt.title(title)
     plt.xlabel(x_label)
     plt.ylabel(y_label)
     plt.legend(fontsize=8)
     plt.grid(alpha=0.25, linestyle=":")
+    
+    # Standarderklärung falls keine spezifische angegeben
+    if explanation is None:
+        explanation = "Vergleich der kumulativen Verteilungen verschiedener Komponenten. Steilere Kurven bedeuten präzisere Messungen, flachere größere Unsicherheit."
+    
+    if explanation:
+        add_plot_explanation(explanation)
+    
     plt.tight_layout()
-    plt.savefig(out, dpi=150)
+    plt.savefig(out, dpi=150, bbox_inches='tight')
     plt.close()
 
 
 __all__ = [
     "COLORS",
+    "add_plot_explanation",
     "plot_pdf",
     "plot_cdf",
     "plot_qq",
