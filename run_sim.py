@@ -51,6 +51,9 @@ from src.sensitivity import (
 
 
 def main():
+    # Defensive re-import (vereinzelt trat ein UnboundLocalError auf obwohl numpy global importiert ist)
+    # Dadurch wird sichergestellt, dass "np" im lokalen Scope gebunden ist, bevor es genutzt wird.
+    import numpy as np  # noqa: F401
     ap = argparse.ArgumentParser(description="Monte Carlo localisation error proxy simulation (Phase 4)")
     ap.add_argument("--config", required=True, help="Path to YAML config")
     ap.add_argument("--out", required=True, help="Output directory for metrics & samples")

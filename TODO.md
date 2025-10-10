@@ -88,8 +88,8 @@
   - [x] Sobol Verfeinerung (Top-N Refinement Runde + normalisierte ST Anteile)
   - [x] Erweiterung Sobol auf rmse_2d / p95_2d (Parameterliste ggf. ausdünnen) – implementiert CLI --sobol-metrics
   - [ ] Parameter-Subset für Stress Szenarien (Tail Gewicht w_tail, odo residual range, map interpolation weight) global analysieren
-  - [ ] Dokumentation Sensitivitätsimplikationen: Top 5 Parameter → empfohlene Überwachungen / Kalibrierung
-  - [ ] Integration OAT2D & Bias Sensitivität in Bericht (Tabellen + Kurzinterpretation)
+  - [x] Dokumentation Sensitivitätsimplikationen: Top 5 Parameter → empfohlene Überwachungen / Kalibrierung (Abschnitt "Konsolidierte Erkenntnisse Sensitivität")
+  - [x] Integration OAT2D & Bias Sensitivität in Bericht (Tabellen + Kurzinterpretation)
 
 ## Phase 6 - Bericht
 
@@ -118,7 +118,8 @@
 - [x] Implementieren secure_interval Export
 - [x] Zeitverlauf (W(d) vs. Distanz) – Plot figures/secure_interval_growth.png (Zeit-proxy)
 - [ ] CLI Option --export-covariance für empirische Komponenten-Kovarianz (Validierung additive Annahme)
-- [x] CLI Option --export-covariance für empirische Komponenten-Kovarianz (Validierung additive Annahme)
+ - [x] CLI Option --export-covariance für empirische Komponenten-Kovarianz (Validierung additive Annahme)
+ - [x] Automatisierte Tabellengenerierung (metrics + sensitivities) via `generate_tables.py`
 - [x] Prüf-Skript: additive_p99_bias.py (berechnet relative Überschätzung vs. Monte-Carlo quantile der Summe)
 - [x] Konvergenz-Traces (RMSE/P95/P99/ES95) Export (--convergence)
 - [ ] Early Detection Evaluierung (nur wenn Daten verfügbar) – separater Metrics-Block early_detection_eval.json
